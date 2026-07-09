@@ -324,7 +324,7 @@ class DiscordHandler {
       const payload = status === 'completed' ? task.result : { error: task.error, progress: task.progress };
       embed.setDescription(```json
 ${clip(redactSecrets(payload), this.config.output.maxReplyChars)}
-````);
+```);
     } else {
       const content = this.taskReplyContent(task, files, '', mode);
       if (content) embed.setDescription(content);
