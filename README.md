@@ -6,15 +6,13 @@
 [![Docker](https://img.shields.io/badge/Docker-sandbox-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-memory-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![License](https://img.shields.io/badge/license-MIT-f7c948?style=for-the-badge)](LICENSE)
-[![Made by Urbanyl](https://img.shields.io/badge/made%20by-Urbanyl%201920-0c111d?style=for-the-badge)](https://github.com/urbanyl)
 
 Longyan is the command engine. Tianji is the Discord operator inside it.
 
 It opens pages, reads them, clicks through flows, runs short Python or JavaScript jobs inside Docker, writes files, keeps memory, and turns rough Discord messages into clean execution plans.
 
 Project name: Long Yan  
-Bot name: Tian Ji  
-Signature: Urbanyl 1920
+Bot name: Tian Ji
 
 ## Core
 
