@@ -1,4 +1,4 @@
-# Longyan / Tianji
+# 龙焱 / 天机 - Longyan / Tianji
 
 <p align="center">
   <img src="assets/longyan-tianji-seal.png" width="170" alt="Longyan Tianji Chinese seal">
