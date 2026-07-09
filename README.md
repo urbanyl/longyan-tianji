@@ -6,15 +6,8 @@
 [![Docker](https://img.shields.io/badge/Docker-sandbox-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-memory-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![License](https://img.shields.io/badge/license-MIT-f7c948?style=for-the-badge)](LICENSE)
-[![Made by Urbanyl](https://img.shields.io/badge/made%20by-Urbanyl%201920-0c111d?style=for-the-badge)](https://github.com/urbanyl)
 
 Longyan is a sharp Discord command engine built around Tianji, a fast operator bot with browser control, sandboxed code execution, file generation, public web research, and long-term memory.
-
-The identity is Chinese in pinyin, with no Hanzi in the public naming:
-
-Project name: Long Yan  
-Bot name: Tian Ji  
-Creator signature: Urbanyl 1920
 
 ## What It Does
 
