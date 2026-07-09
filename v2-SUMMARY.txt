@@ -1,0 +1,98 @@
+# Bot v2.0 - What Changed
+
+## Summary
+
+Added AI chat and user memory to the bot.
+
+## New Features
+
+- Chat with AI (uses OpenRouter API)
+- Bot remembers users and their preferences
+- 10 new slash commands
+- English and Chinese support
+
+## 8 New Code Modules
+
+1. openrouter-handler.js - AI API integration
+2. user-memory.js - Save user data to JSON
+3. embed-builder.js - Format chat responses
+4. auth-manager.js - Control who can use commands
+5. interaction-handler.js - Handle slash commands
+6. chat-manager.js - Chat logic
+7. slash-command-manager.js - Command setup
+8. slash-command-registry.js - Deploy commands
+
+## 10 New Commands
+
+- /chat - Talk to AI
+- /profile - See your profile
+- /memory - Memory stats
+- /lang - Change language
+- /help - List commands
+- /ping - Bot latency
+- /info - About bot
+- /stats - Bot stats
+- /feedback - Send feedback
+- /clear-memory - Delete your data
+
+## What You Need
+
+1. Discord bot token
+2. OpenRouter API key (free at openrouter.ai)
+3. Node.js 18+
+
+## Quick Start
+
+```bash
+npm install
+npx playwright install chromium
+cp .env.example .env
+# Edit .env with your tokens
+npm start
+```
+
+See QUICKSTART.md for detailed steps.
+
+## Where Stuff Is Stored
+
+User data goes to: `data/user-memory/{userId}.json`
+
+Contains:
+- Conversation history
+- What the bot learned about you
+- Interaction stats
+
+Data stays on your server. Nowhere else.
+
+## Configure for Production
+
+Edit .env:
+```
+SECURITY_REQUIRE_ALLOWLIST=true
+ALLOWED_USER_IDS=your_id
+ADMIN_USER_IDS=your_id
+```
+
+## Docs
+
+- QUICKSTART.md - Get running in 5 minutes
+- SETUP.md - Deployment info
+- CHANGELOG.md - Technical changes
+- IMPLEMENTATION_SUMMARY.md - Deep dive
+- README.md - Original documentation
+
+## Verify Installation
+
+```bash
+node VERIFICATION_CHECKLIST.js
+```
+
+## No Breaking Changes
+
+Old commands still work. This is purely additive.
+
+Selfbot mode is removed - use regular bot token.
+
+## Questions
+
+See the doc files or open an issue on GitHub.

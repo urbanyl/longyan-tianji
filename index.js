@@ -9,6 +9,11 @@ const CommandPlanner = require('./src/command-planner');
 const Orchestrator = require('./src/orchestrator');
 const DiscordHandler = require('./src/discord-handler');
 const LocalDashboard = require('./src/local-dashboard');
+const AuthManager = require('./src/auth-manager');
+const OpenRouterHandler = require('./src/openrouter-handler');
+const UserMemory = require('./src/user-memory');
+const EmbedBuilder = require('./src/embed-builder');
+const SlashCommandRegistry = require('./src/slash-command-registry');
 
 async function main() {
   const memory = new MemoryManager(config.execution.memoryPath);
@@ -18,6 +23,20 @@ async function main() {
   const research = new ResearchAgent(config.research);
   const planner = new CommandPlanner();
 
+  // Initialiser les nouveaux composants
+  let openrouter = null;
+  if (config.openrouter?.apiKey) {
+    try {
+      openrouter = new OpenRouterHandler(config.openrouter.apiKey);
+    } catch (error) {
+      console.warn('OpenRouter initialization failed:', error.message);
+    }
+  }
+
+  const userMemory = new UserMemory('./data/user-memory');
+  const embedBuilder = new EmbedBuilder();
+  const authManager = new AuthManager(config.security || {});
+
   const orchestrator = new Orchestrator({
     config,
     memory,
@@ -25,7 +44,11 @@ async function main() {
     codeRunner,
     fileGenerator,
     research,
-    planner
+    planner,
+    openrouter,
+    userMemory,
+    embedBuilder,
+    authManager
   });
 
   let dashboard = null;
@@ -50,48 +73,71 @@ async function main() {
     console.error(`${config.brand.bot} unhandled rejection:`, error);
   });
 
-  const token = config.discord.userTokenMode ? config.discord.userToken : config.discord.token;
-  
+  const token = config.discord.token;
+
   if (!token) {
-    const tokenName = config.discord.userTokenMode ? 'DISCORD_USER_TOKEN' : 'DISCORD_TOKEN';
     if (dashboard) {
-      console.warn(`${tokenName} is missing. Running local dashboard only.`);
+      console.warn('DISCORD_TOKEN is missing. Running local dashboard only.');
       return;
     }
-    throw new Error(`${tokenName} is missing.`);
+    throw new Error('DISCORD_TOKEN is missing.');
   }
 
-  if (config.discord.userTokenMode) {
-    console.warn('DISCORD_USER_TOKEN_MODE is enabled. Using user token (selfbot mode).');
-    console.warn('This is against Discord Terms of Service. Use at your own risk.');
-  }
+  console.log('Initializing bot in APPLICATION MODE (not selfbot)...');
 
   client = new Client({
-    intents: config.discord.userTokenMode
-      ? [
-          GatewayIntentBits.Guilds,
-          GatewayIntentBits.GuildMessages,
-          GatewayIntentBits.DirectMessages,
-          GatewayIntentBits.MessageContent
-        ]
-      : [
-          GatewayIntentBits.Guilds,
-          GatewayIntentBits.GuildMessages,
-          GatewayIntentBits.MessageContent
-        ],
-    partials: config.discord.userTokenMode
-      ? [Partials.Channel, Partials.Message, Partials.User]
-      : [Partials.Channel, Partials.Message]
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.DirectMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildMembers
+    ],
+    partials: [Partials.Channel, Partials.Message, Partials.User]
   });
 
-  const handler = new DiscordHandler(client, orchestrator, config);
+  const handler = new DiscordHandler(client, orchestrator, config, {
+    userMemory,
+    embedBuilder,
+    authManager,
+    openrouter
+  });
 
-  client.once(Events.ClientReady, () => {
+  client.once(Events.ClientReady, async () => {
     console.log(`${config.brand.project} ${config.brand.bot} is online as ${client.user.tag}`);
+    console.log(`Slash commands are available! Add the bot to your server.`);
+
+    // Déployer les slash commands
+    const slashRegistry = new SlashCommandRegistry();
+    slashRegistry.registerAll();
+    await slashRegistry.deploy(client);
   });
 
   client.on('messageCreate', async (message) => {
     await handler.handleMessage(message);
+  });
+
+  // Gérer les interactions (slash commands)
+  client.on('interactionCreate', async (interaction) => {
+    await handler.handleInteraction(interaction);
+  });
+
+  // Gérer les message updates pour les replies
+  client.on('messageUpdate', async (oldMessage, newMessage) => {
+    if (newMessage.author.bot) return; // Ignorer les messages du bot
+
+    // Vérifier si c'est une réponse
+    if (newMessage.reference) {
+      try {
+        const repliedTo = await newMessage.channel.messages.fetch(newMessage.reference.messageId);
+        if (repliedTo.author.id === client.user.id) {
+          // L'utilisateur répond à un message du bot
+          await handler.handleReply(newMessage, repliedTo);
+        }
+      } catch (error) {
+        console.error('Error handling reply:', error);
+      }
+    }
   });
 
   await client.login(token);

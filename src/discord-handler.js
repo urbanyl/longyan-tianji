@@ -1,10 +1,11 @@
 const path = require('path');
+const { EmbedBuilder } = require('discord.js');
 const { promises: fs } = require('fs');
 const { AccessController, RateLimiter } = require('./security');
 const { clip, formatMs, isPathInside, redactSecrets } = require('./utils');
 
 class DiscordHandler {
-  constructor(client, orchestrator, config) {
+  constructor(client, orchestrator, config, additionalModules = {}) {
     this.client = client;
     this.orchestrator = orchestrator;
     this.config = config;
@@ -15,6 +16,24 @@ class DiscordHandler {
       memoryScope: config.memory.scope
     });
     this.rateLimiter = new RateLimiter(config.security);
+
+    // Modules additionnels pour les nouvelles fonctionnalités
+    this.userMemory = additionalModules.userMemory;
+    this.embedBuilder = additionalModules.embedBuilder;
+    this.authManager = additionalModules.authManager;
+    this.openrouter = additionalModules.openrouter;
+
+    // Créer le handler d'interactions
+    if (this.userMemory && this.embedBuilder) {
+      const InteractionHandler = require('./interaction-handler');
+      this.interactionHandler = new InteractionHandler(
+        client,
+        orchestrator,
+        config,
+        additionalModules
+      );
+    }
+
     this.register();
     this.events();
   }
@@ -55,7 +74,7 @@ class DiscordHandler {
 
   async exec(message, args) {
     const command = args.join(' ').trim();
-    if (!command) return message.reply(`Send a command after ${this.brand.prefix}exec.`);
+    if (!command) return message.reply({ embeds: [this.createSimpleEmbed('Error / 错误', `Send a command after ${this.brand.prefix}exec.`, 0xff0000)] });
 
     const task = await this.orchestrator.execute(command, {
       sessionId: message.author.id,
@@ -75,10 +94,10 @@ class DiscordHandler {
 
   async status(message, args) {
     const taskId = args[0];
-    if (!taskId) return message.reply('Send a task id.');
+    if (!taskId) return message.reply({ embeds: [this.createSimpleEmbed('Error / 错误', 'Send a task id.', 0xff0000)] });
 
     const task = await this.orchestrator.getStatus(taskId);
-    if (!task) return message.reply('Task not found.');
+    if (!task) return message.reply({ embeds: [this.createSimpleEmbed('Error / 错误', 'Task not found.', 0xff0000)] });
     if (!this.access.canReadTask(message, task)) return message.reply('Task not found.');
 
     return await this.replyWithTask(message, task);
@@ -89,30 +108,30 @@ class DiscordHandler {
     if (!taskId) return message.reply('Send a task id.');
 
     const existing = await this.orchestrator.getStatus(taskId);
-    if (!existing || !this.access.canReadTask(message, existing)) return message.reply(`Task ${taskId} was not found.`);
+    if (!existing || !this.access.canReadTask(message, existing)) return message.reply({ embeds: [this.createSimpleEmbed('Error / 错误', `Task ${taskId} was not found.`, 0xff0000)] });
 
     const task = await this.orchestrator.cancelTask(taskId);
-    return message.reply(task ? `Cancelled ${taskId}.` : `Task ${taskId} was not found.`);
+    return message.reply({ embeds: [this.createSimpleEmbed('Status / 状态', task ? `Cancelled ${taskId}. / 已取消 ${taskId}` : `Task ${taskId} was not found. / 任务 ${taskId} 未找到`, task ? 0xffaa00 : 0xff0000)] });
   }
 
   async memory(message, args) {
     const action = (args[0] || '').toLowerCase();
 
-    if (!action) return message.reply(`Usage: ${this.brand.prefix}memory set key value | get key | list | delete key`);
+    if (!action) return message.reply({ embeds: [this.createSimpleEmbed('Usage / 用法', `Usage: ${this.brand.prefix}memory set key value | get key | list | delete key`, 0x0099ff)] });
     const prefix = this.access.memoryPrefix(message);
 
     if (action === 'list') {
       const items = await this.orchestrator.memory.listMemory(this.config.memory.listLimit, prefix);
-      if (!items.length) return message.reply('Memory is empty.');
+      if (!items.length) return message.reply({ embeds: [this.createSimpleEmbed('Info / 信息', 'Memory is empty. / 内存为空', 0x0099ff)] });
       const lines = items.map((item) => `${item.key.slice(prefix.length)}: ${clip(redactSecrets(item.value), 80)}`).join('\n');
       return message.reply(`\`\`\`\n${clip(lines, 1800)}\n\`\`\``);
     }
 
     if (action === 'delete') {
       const key = args[1];
-      if (!key) return message.reply('Send a key.');
+      if (!key) return message.reply({ embeds: [this.createSimpleEmbed('Error / 错误', 'Send a key. / 请发送键名', 0xff0000)] });
       const deleted = await this.orchestrator.memory.deleteMemory(`${prefix}${key}`);
-      return message.reply(deleted ? `Deleted ${key}.` : `${key} was not found.`);
+      return message.reply({ embeds: [this.createSimpleEmbed('Status / 状态', deleted ? `Deleted ${key}. / 已删除 ${key}` : `${key} was not found. / ${key} 未找到`, deleted ? 0x00ff00 : 0xff0000)] });
     }
 
     if (action === 'get') {
@@ -126,12 +145,12 @@ class DiscordHandler {
     const value = action === 'set' ? args.slice(2).join(' ') : args.slice(1).join(' ');
 
     if (!key || !value) return message.reply(`Usage: ${this.brand.prefix}memory set key value`);
-    if (key.includes(':')) return message.reply('Memory keys cannot contain colon characters.');
+    if (key.includes(':')) return message.reply({ embeds: [this.createSimpleEmbed('Error / 错误', 'Memory keys cannot contain colon characters.', 0xff0000)] });
     if (value.length > this.config.memory.maxValueChars) {
-      return message.reply(`Memory value is too long. Limit: ${this.config.memory.maxValueChars} characters.`);
+      return message.reply({ embeds: [this.createSimpleEmbed('Error / 错误', `Memory value is too long. Limit: ${this.config.memory.maxValueChars} characters.`, 0xff0000)] });
     }
     await this.orchestrator.memory.setMemory(`${prefix}${key}`, value);
-    return message.reply(`Stored ${key}.`);
+    return message.reply({ embeds: [this.createSimpleEmbed('Success / 成功', `Stored ${key}. / 已存储 ${key}`, 0x00ff00)] });
   }
 
   async assistant(message, args) {
@@ -296,14 +315,90 @@ class DiscordHandler {
     const files = await this.extractFiles(task);
     const status = task.status || 'unknown';
     const duration = task.duration ? ` in ${formatMs(task.duration)}` : '';
-    const header = `${this.brand.bot} ${status}${duration} ${task.id ? `[${task.id.slice(0, 8)}]` : ''}`.trim();
     const mode = await this.currentReplyMode(message);
-    const content = this.taskReplyContent(task, files, header, mode);
+    
+    // Create bilingual embed
+    const embed = this.createTaskEmbed(task, files, status, duration);
+    
+    if (mode === 'json') {
+      const payload = status === 'completed' ? task.result : { error: task.error, progress: task.progress };
+      embed.setDescription(```json
+${clip(redactSecrets(payload), this.config.output.maxReplyChars)}
+````);
+    } else {
+      const content = this.taskReplyContent(task, files, '', mode);
+      if (content) embed.setDescription(content);
+    }
 
     return message.reply({
-      content: clip(content, 2000),
+      embeds: [embed],
       files
     });
+  }
+
+  createTaskEmbed(task, files, status, duration) {
+    const statusColors = {
+      completed: 0x00ff00,    // Green
+      failed: 0xff0000,       // Red
+      cancelled: 0xffaa00,    // Orange
+      running: 0x0099ff,      // Blue
+      queued: 0x999999,       // Gray
+      unknown: 0x666666       // Dark gray
+    };
+
+    const statusTranslations = {
+      completed: { en: 'Completed', zh: '已完成' },
+      failed: { en: 'Failed', zh: '失败' },
+      cancelled: { en: 'Cancelled', zh: '已取消' },
+      running: { en: 'Running', zh: '运行中' },
+      queued: { en: 'Queued', zh: '排队中' },
+      unknown: { en: 'Unknown', zh: '未知' }
+    };
+
+    const statusText = statusTranslations[status] || statusTranslations.unknown;
+    const color = statusColors[status] || statusColors.unknown;
+
+    const embed = new EmbedBuilder()
+      .setColor(color)
+      .setTitle(`${this.brand.project} / ${this.brand.bot}`)
+      .addFields(
+        { name: 'Status / 状态', value: `${statusText.en} | ${statusText.zh}`, inline: true },
+        { name: 'Task ID / 任务ID', value: task.id ? task.id.slice(0, 8) : 'N/A', inline: true }
+      );
+
+    if (duration) {
+      embed.addFields({ name: 'Duration / 耗时', value: duration.replace(' in ', ''), inline: true });
+    }
+
+    if (files.length > 0) {
+      const fileNames = files.map(f => f.name).join(', ');
+      embed.addFields({ name: 'Attachments / 附件', value: fileNames, inline: false });
+    }
+
+    if (task.error) {
+      embed.addFields({ name: 'Error / 错误', value: task.error, inline: false });
+    }
+
+    embed.setTimestamp();
+    embed.setFooter({ text: `${this.brand.project} v1.0.6 | Longyan Command Engine` });
+
+    return embed;
+  }
+
+  createSimpleEmbed(title, description, color = 0x0099ff) {
+    const embed = new EmbedBuilder()
+      .setColor(color)
+      .setTitle(`${this.brand.project} / ${this.brand.bot}`)
+      .setDescription(description)
+      .setTimestamp()
+      .setFooter({ text: `${this.brand.project} v1.0.6 | Longyan Command Engine` });
+    
+    if (title) {
+      embed.addFields({ name: title, value: description, inline: false });
+      embed.setDescription('');
+    }
+    
+    return embed;
   }
 
   normalizeReplyMode(value) {
@@ -467,6 +562,85 @@ class DiscordHandler {
       await command(message, args);
     } catch (error) {
       await message.reply(`${this.brand.bot} error: ${redactSecrets(error.message)}`);
+    }
+  }
+
+  /**
+   * Traite les interactions slash commands
+   * @param {Interaction} interaction 
+   */
+  async handleInteraction(interaction) {
+    if (!this.interactionHandler) return;
+    try {
+      await this.interactionHandler.handle(interaction);
+    } catch (error) {
+      console.error('Interaction handler error:', error);
+    }
+  }
+
+  /**
+   * Traite les réponses/replies aux messages du bot
+   * @param {Message} message - Message utilisateur (réponse)
+   * @param {Message} repliedTo - Message auquel il est répondu (message du bot)
+   */
+  async handleReply(message, repliedTo) {
+    if (!this.openrouter || !this.userMemory) return;
+
+    try {
+      const lang = this.userMemory.load(message.author.id)?.profile?.language || "en";
+
+      // Vérifier si l'utilisateur est autorisé
+      if (this.authManager) {
+        const permCheck = this.authManager.checkUserPermission(
+          message.author,
+          message.member,
+          message.channel,
+          message.guild
+        );
+        if (!permCheck.allowed) {
+          const embed = this.embedBuilder.createUnauthorizedEmbed(lang);
+          return await message.reply({ embeds: [embed] });
+        }
+      }
+
+      // Obtenir l'historique de conversation
+      const userMem = this.userMemory.load(message.author.id);
+      const conversationHistory = userMem.conversationHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      })) || [];
+
+      // Ajouter le message précédent du bot comme contexte
+      conversationHistory.push({
+        role: "assistant",
+        content: repliedTo.content
+      });
+
+      // Enregistrer l'interaction
+      this.userMemory.recordInteraction(message.author.id, {
+        type: "reply",
+        content: message.content
+      });
+
+      // Montrer le typing
+      await message.channel.sendTyping();
+
+      // Appeler OpenRouter
+      const response = await this.openrouter.chat(message.content, conversationHistory);
+
+      // Sauvegarder l'échange
+      this.userMemory.addMessage(message.author.id, "user", message.content);
+      this.userMemory.addMessage(message.author.id, "assistant", response);
+
+      // Créer un embed pour la réponse
+      const embed = this.embedBuilder.createChatEmbed(response, this.brand.bot, lang);
+
+      return await message.reply({ embeds: [embed] });
+    } catch (error) {
+      console.error("Reply error:", error);
+      const lang = this.userMemory?.load(message.author.id)?.profile?.language || "en";
+      const embed = this.embedBuilder.createErrorEmbed(error.message, lang);
+      return await message.reply({ embeds: [embed] }).catch(() => {});
     }
   }
 }

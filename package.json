@@ -25,6 +25,7 @@
   "author": "Urbanyl 1920",
   "license": "MIT",
   "dependencies": {
+    "@openrouter/sdk": "^0.13.32",
     "axios": "^1.6.2",
     "discord.js": "^14.14.1",
     "dockerode": "^5.0.1",
