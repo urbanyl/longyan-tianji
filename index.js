@@ -14,6 +14,7 @@ const OpenRouterHandler = require('./src/openrouter-handler');
 const UserMemory = require('./src/user-memory');
 const EmbedBuilder = require('./src/embed-builder');
 const SlashCommandRegistry = require('./src/slash-command-registry');
+const CommandInterceptor = require('./src/command-interceptor');
 
 async function main() {
   const memory = new MemoryManager(config.execution.memoryPath);
@@ -103,9 +104,11 @@ async function main() {
     openrouter
   });
 
-  // Charger le handler optimisé
-  const OptimizedHandler = require('./src/optimized-handler');
-  const optimizedHandler = new OptimizedHandler(client, handler);
+  const commandInterceptor = new CommandInterceptor();
+
+  // Charger le handler optimisé - DISABLED
+  // const OptimizedHandler = require('./src/optimized-handler');
+  // const optimizedHandler = new OptimizedHandler(client, handler);
 
   client.once(Events.ClientReady, async () => {
     console.log(`${config.brand.project} ${config.brand.bot} is online as ${client.user.tag}`);
@@ -142,13 +145,16 @@ async function main() {
   });
 
   client.on('messageCreate', async (message) => {
-    // Essayer d'abord le handler optimisé
+    // Intercepter les nouvelles commandes (search, weather, crypto, etc)
+    if (await commandInterceptor.intercept(message, config.brand.prefix)) {
+      return;
+    }
+
+    // Puis utiliser le handler original
     try {
-      await optimizedHandler.handleMessage(message);
-    } catch (error) {
-      console.error('Erreur handler optimisé:', error);
-      // Fallback au handler original
       await handler.handleMessage(message);
+    } catch (error) {
+      console.error('Handler error:', error);
     }
   });
 
