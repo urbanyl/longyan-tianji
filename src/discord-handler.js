@@ -632,15 +632,12 @@ ${clip(redactSecrets(payload), this.config.output.maxReplyChars)}
       this.userMemory.addMessage(message.author.id, "user", message.content);
       this.userMemory.addMessage(message.author.id, "assistant", response);
 
-      // Créer un embed pour la réponse
-      const embed = this.embedBuilder.createChatEmbed(response, this.brand.bot, lang);
-
-      return await message.reply({ embeds: [embed] });
+      // Répondre en texte simple (pas d'embed)
+      return await message.reply({ content: response });
     } catch (error) {
       console.error("Reply error:", error);
       const lang = this.userMemory?.load(message.author.id)?.profile?.language || "en";
-      const embed = this.embedBuilder.createErrorEmbed(error.message, lang);
-      return await message.reply({ embeds: [embed] }).catch(() => {});
+      return await message.reply({ content: `Error: ${error.message}` }).catch(() => {});
     }
   }
 }

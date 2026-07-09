@@ -120,7 +120,7 @@ class InteractionHandler {
 		{ role: "user", content: message }
 	  ];
 
-	  // Appeler OpenRouter
+		// Appeler OpenRouter
 	  const response = await this.openrouter.chatWithStreaming(message, conversationHistory);
 
 	  // Sauvegarder l'échange
@@ -130,21 +130,11 @@ class InteractionHandler {
 	  // Analyser et mettre à jour les caractéristiques (simple heuristique)
 	  this._updateCharacteristicsFromMessage(interaction.user.id, message);
 
-	  // Créer un embed pour la réponse
-	  const embed = this.embedBuilder.createChatEmbed(
-		response.content,
-		this.brand.bot,
-		lang
-	  );
-
-	  return await interaction.editReply({ embeds: [embed] });
+	  // Répondre en texte simple (pas d'embed)
+	  return await interaction.editReply({ content: response.content });
 	} catch (error) {
 	  console.error("Chat error:", error);
-	  const embed = this.embedBuilder.createErrorEmbed(
-		`Erreur: ${error.message}`,
-		lang
-	  );
-	  return await interaction.editReply({ embeds: [embed] });
+		return await interaction.editReply({ content: `Error: ${error.message}` });
 	}
   }
 
