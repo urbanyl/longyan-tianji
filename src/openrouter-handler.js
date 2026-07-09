@@ -29,12 +29,14 @@ class OpenRouterHandler {
 	  ];
 
 	  // Activer le stream
-	  const stream = await this.openrouter.chat.send({
-		model: this.model,
-		messages: messages,
-		temperature: 0.7,
-		top_p: 0.9,
-		stream: true
+		const stream = await this.openrouter.chat.send({
+		chatRequest: {
+		  model: this.model,
+		  messages: messages,
+		  temperature: 0.7,
+		  top_p: 0.9,
+		  stream: true
+		}
 	  });
 
 	  let response = "";
@@ -93,12 +95,14 @@ class OpenRouterHandler {
 		}
 	  ];
 
-	  const stream = await this.openrouter.chat.send({
-		model: this.model,
-		messages: messages,
-		temperature: 0.7,
-		top_p: 0.9,
-		stream: true
+		const stream = await this.openrouter.chat.send({
+		chatRequest: {
+		  model: this.model,
+		  messages: messages,
+		  temperature: 0.7,
+		  top_p: 0.9,
+		  stream: true
+		}
 	  });
 
 	  let response = "";
@@ -135,10 +139,12 @@ class OpenRouterHandler {
    */
   async testConnection() {
 	try {
-	  await this.openrouter.chat.send({
-		model: this.model,
-		messages: [{ role: "user", content: "test" }],
-		stream: false
+		await this.openrouter.chat.send({
+		chatRequest: {
+		  model: this.model,
+		  messages: [{ role: "user", content: "test" }],
+		  stream: false
+		}
 	  });
 	  return true;
 	} catch {
