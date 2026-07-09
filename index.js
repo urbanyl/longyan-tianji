@@ -103,30 +103,67 @@ async function main() {
     openrouter
   });
 
+  // Charger le handler optimisé
+  const OptimizedHandler = require('./src/optimized-handler');
+  const optimizedHandler = new OptimizedHandler(client, handler);
+
   client.once(Events.ClientReady, async () => {
     console.log(`${config.brand.project} ${config.brand.bot} is online as ${client.user.tag}`);
     console.log(`Slash commands are available! Add the bot to your server.`);
+    console.log(`🔧 Handler optimisé activé avec commandes rapides`);
 
-    // Set presence: Listening status in Chinese
+    // Set presence optimisé
     try {
-      await client.user.setPresence({ activities: [{ name: '我是一个由 urbanyl 开发的中文代理', type: 2 }], status: 'online' });
+      await client.user.setPresence({ 
+        activities: [{ 
+          name: 'Optimisé | !help', 
+          type: 3 // Watching
+        }], 
+        status: 'online' 
+      });
     } catch (err) {
       console.warn('Failed to set presence:', err.message);
     }
 
-    // Déployer les slash commands
-    const slashRegistry = new SlashCommandRegistry();
-    slashRegistry.registerAll();
-    await slashRegistry.deploy(client);
+    // Déployer les slash commands optimisés
+    const OptimizedSlashCommands = require('./src/optimized-slash-commands');
+    const optimizedSlash = new OptimizedSlashCommands();
+    
+    try {
+      await client.application.commands.set(optimizedSlash.toJSON());
+      console.log(`✅ ${optimizedSlash.getCommands().length} slash commands optimisés déployés`);
+    } catch (error) {
+      console.error('Erreur déploiement slash commands optimisés:', error);
+      // Fallback aux slash commands originaux
+      const slashRegistry = new SlashCommandRegistry();
+      slashRegistry.registerAll();
+      await slashRegistry.deploy(client);
+    }
   });
 
   client.on('messageCreate', async (message) => {
-    await handler.handleMessage(message);
+    // Essayer d'abord le handler optimisé
+    try {
+      await optimizedHandler.handleMessage(message);
+    } catch (error) {
+      console.error('Erreur handler optimisé:', error);
+      // Fallback au handler original
+      await handler.handleMessage(message);
+    }
   });
 
   // Gérer les interactions (slash commands)
   client.on('interactionCreate', async (interaction) => {
-    await handler.handleInteraction(interaction);
+    // Essayer d'abord les slash commands optimisés
+    const OptimizedSlashCommands = require('./src/optimized-slash-commands');
+    const optimizedSlash = new OptimizedSlashCommands();
+    
+    try {
+      await optimizedSlash.handleInteraction(interaction, client);
+    } catch (error) {
+      // Fallback au handler original
+      await handler.handleInteraction(interaction);
+    }
   });
 
   // Gérer les message updates pour les replies
