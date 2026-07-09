@@ -36,6 +36,14 @@ function boundedInteger(name, fallback, minimum, maximum) {
   return Math.min(integer(name, fallback, minimum), maximum);
 }
 
+function dockerSocket() {
+  const value = text('DOCKER_SOCKET');
+  if (process.platform === 'win32' && (!value || value === '/var/run/docker.sock')) {
+    return '//./pipe/docker_engine';
+  }
+  return value || '/var/run/docker.sock';
+}
+
 function inside(base, target) {
   const relative = path.relative(base, target);
   return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative);
@@ -74,7 +82,7 @@ module.exports = Object.freeze({
     memoryPath: safePath('MEMORY_DB_PATH', './longyan-memory.db', 'ALLOW_MEMORY_DB_OUTSIDE_ROOT')
   }),
   docker: Object.freeze({
-    socketPath: text('DOCKER_SOCKET', '/var/run/docker.sock'),
+    socketPath: dockerSocket(),
     networkMode: text('DOCKER_NETWORK', 'none'),
     autoPullImages: boolean('AUTO_PULL_IMAGES', false),
     pythonImage: text('PYTHON_IMAGE', 'python:3.11-slim'),
@@ -107,6 +115,7 @@ module.exports = Object.freeze({
   }),
   output: Object.freeze({
     tempDir: safePath('TEMP_DIR', './temp', 'ALLOW_TEMP_DIR_OUTSIDE_ROOT'),
+    defaultReplyMode: choice('DEFAULT_REPLY_MODE', 'summary', ['summary', 'files', 'json', 'silent']),
     maxReplyChars: integer('MAX_REPLY_CHARS', 1800, 500),
     maxAttachmentFiles: boundedInteger('MAX_ATTACHMENT_FILES', 8, 1, 20),
     maxAttachmentBytes: boundedInteger('MAX_ATTACHMENT_BYTES', 8 * 1024 * 1024, 1024, 50 * 1024 * 1024),

@@ -50,6 +50,17 @@ class CodeRunner {
     });
   }
 
+  describeDockerError(error) {
+    const message = String(error && error.message ? error.message : error);
+    if (/no such image|not found/i.test(message) && !this.config.autoPullImages) {
+      return `${message}. Pull the image manually or set AUTO_PULL_IMAGES=true in a reviewed environment.`;
+    }
+    if (/ENOENT|ECONNREFUSED|connect/i.test(message)) {
+      return `Docker is not reachable at ${this.config.socketPath}. Start Docker Desktop/Engine or set DOCKER_SOCKET to the correct host socket.`;
+    }
+    return message;
+  }
+
   async run(input, context = {}) {
     const language = input.language === 'javascript' ? 'javascript' : 'python';
     const code = String(input.code || '');
@@ -64,9 +75,9 @@ class CodeRunner {
     const taskId = context.taskId || containerId;
     let container = null;
 
-    await this.ensureImage(image);
-
     try {
+      await this.ensureImage(image);
+
       container = await this.docker.createContainer({
         Image: image,
         Cmd: command,
@@ -121,12 +132,7 @@ class CodeRunner {
         output: clipBytes(decodeDockerLog(logs).trim(), this.execution.codeMaxOutputChars)
       };
     } catch (error) {
-      return {
-        containerId,
-        language,
-        image,
-        error: error.message
-      };
+      throw new Error(this.describeDockerError(error));
     } finally {
       if (container) await container.remove({ force: true }).catch(() => {});
       this.containers.delete(containerId);
@@ -137,7 +143,7 @@ class CodeRunner {
   async health() {
     return await this.docker.ping().then(() => ({ docker: true })).catch((error) => ({
       docker: false,
-      error: error.message
+      error: this.describeDockerError(error)
     }));
   }
 

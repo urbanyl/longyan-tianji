@@ -28,6 +28,9 @@ class DiscordHandler {
     this.commands.set('assistant', (message, args) => this.assistant(message, args));
     this.commands.set('profile', (message, args) => this.assistant(message, args));
     this.commands.set('remember', (message, args) => this.assistant(message, ['remember', ...args]));
+    this.commands.set('output', (message, args) => this.output(message, args));
+    this.commands.set('reply', (message, args) => this.output(message, args));
+    this.commands.set('code', (message, args) => this.codeOutput(message, args));
     this.commands.set('session', (message, args) => this.session(message, args));
     this.commands.set('queue', (message) => this.queue(message));
     this.commands.set('health', (message) => this.health(message));
@@ -183,6 +186,10 @@ class DiscordHandler {
       return message.reply(`Remembered preference ${key}.`);
     }
 
+    if (['output', 'reply', 'reply-mode'].includes(action)) {
+      return await this.output(message, args.slice(1));
+    }
+
     if (action === 'forget') {
       const key = args[1];
       if (!key) return message.reply(`Usage: ${this.brand.prefix}assistant forget key`);
@@ -190,7 +197,43 @@ class DiscordHandler {
       return message.reply(`Forgot preference ${key}.`);
     }
 
-    return message.reply(`Usage: ${this.brand.prefix}assistant show | rename name | call-me name | style text | personality text | notes text | remember key value | forget key`);
+    return message.reply(`Usage: ${this.brand.prefix}assistant show | rename name | call-me name | style text | personality text | notes text | output files|summary|json|silent | remember key value | forget key`);
+  }
+
+  async output(message, args) {
+    const mode = this.normalizeReplyMode(args[0]);
+
+    if (!args[0]) {
+      const current = await this.currentReplyMode(message);
+      return message.reply(`Current reply mode: ${current}. Use ${this.brand.prefix}output files, summary, json, or silent.`);
+    }
+
+    if (!mode) {
+      return message.reply(`Unknown reply mode. Use ${this.brand.prefix}output files, summary, json, or silent.`);
+    }
+
+    await this.orchestrator.rememberPreference(message.author.id, 'reply_mode', mode);
+    return message.reply(`Reply mode set to ${mode}.`);
+  }
+
+  async codeOutput(message, args) {
+    const value = String(args[0] || '').trim().toLowerCase();
+    if (!value) {
+      const current = await this.currentReplyMode(message);
+      return message.reply(`Code/debug output is ${current === 'json' ? 'on' : 'off'}; current reply mode: ${current}.`);
+    }
+
+    if (['off', 'no', 'false', 'never', 'disable', 'disabled'].includes(value)) {
+      await this.orchestrator.rememberPreference(message.author.id, 'reply_mode', 'files');
+      return message.reply('Code/debug output disabled. Reply mode set to files.');
+    }
+
+    if (['on', 'yes', 'true', 'enable', 'enabled'].includes(value)) {
+      await this.orchestrator.rememberPreference(message.author.id, 'reply_mode', 'json');
+      return message.reply('Code/debug output enabled. Reply mode set to json.');
+    }
+
+    return message.reply(`Usage: ${this.brand.prefix}code off | on`);
   }
 
   async session(message, args) {
@@ -238,6 +281,9 @@ class DiscordHandler {
       `${p}assistant call-me Boss`,
       `${p}assistant style warm, concise, direct`,
       `${p}assistant remember timezone Europe/Paris`,
+      `${p}output files`,
+      `${p}output json`,
+      `${p}code off`,
       `${p}status task_id`,
       `${p}queue`,
       `${p}memory set key value`,
@@ -251,13 +297,127 @@ class DiscordHandler {
     const status = task.status || 'unknown';
     const duration = task.duration ? ` in ${formatMs(task.duration)}` : '';
     const header = `${this.brand.bot} ${status}${duration} ${task.id ? `[${task.id.slice(0, 8)}]` : ''}`.trim();
-    const payload = status === 'completed' ? task.result : { error: task.error, progress: task.progress };
-    const content = `${header}\n\`\`\`json\n${clip(redactSecrets(payload), this.config.output.maxReplyChars)}\n\`\`\``;
+    const mode = await this.currentReplyMode(message);
+    const content = this.taskReplyContent(task, files, header, mode);
 
     return message.reply({
       content: clip(content, 2000),
       files
     });
+  }
+
+  normalizeReplyMode(value) {
+    const clean = String(value || '').trim().toLowerCase();
+    const aliases = {
+      attachment: 'files',
+      attachments: 'files',
+      clean: 'files',
+      file: 'files',
+      files: 'files',
+      'no-code': 'files',
+      nocode: 'files',
+      normal: 'summary',
+      default: 'summary',
+      short: 'summary',
+      summary: 'summary',
+      debug: 'json',
+      json: 'json',
+      raw: 'json',
+      quiet: 'silent',
+      silent: 'silent',
+      status: 'silent'
+    };
+    return aliases[clean] || '';
+  }
+
+  async currentReplyMode(message) {
+    const profile = await this.orchestrator.getProfile(message.author.id);
+    return this.normalizeReplyMode(profile.preferences?.reply_mode) || this.config.output.defaultReplyMode;
+  }
+
+  taskReplyContent(task, files, header, mode) {
+    const status = task.status || 'unknown';
+
+    if (mode === 'json') {
+      const payload = status === 'completed' ? task.result : { error: task.error, progress: task.progress };
+      return `${header}\n\`\`\`json\n${clip(redactSecrets(payload), this.config.output.maxReplyChars)}\n\`\`\``;
+    }
+
+    if (status !== 'completed') {
+      const error = task.error ? `\n${redactSecrets(task.error)}` : '';
+      return `${header}${error}`;
+    }
+
+    if (mode === 'silent') return header;
+
+    const summary = mode === 'files'
+      ? this.fileOnlySummary(task, files)
+      : this.readableSummary(task, files);
+    return summary ? `${header}\n${summary}` : header;
+  }
+
+  fileOnlySummary(task, files) {
+    const names = this.artifactNames(task, files);
+    if (names.length) return `Attached: ${names.join(', ')}`;
+    const output = this.firstPlainOutput(task);
+    return output ? clip(redactSecrets(output), this.config.output.maxReplyChars) : 'No file attachment was produced.';
+  }
+
+  readableSummary(task, files) {
+    const lines = [];
+    if (task.result?.summary) lines.push(task.result.summary);
+
+    const names = this.artifactNames(task, files);
+    if (names.length) lines.push(`Files: ${names.join(', ')}`);
+
+    const progress = (task.progress || [])
+      .filter((step) => step.summary || step.error)
+      .slice(0, 6)
+      .map((step) => {
+        const status = step.error ? 'failed' : step.status;
+        return `Step ${step.index} ${step.type} ${status}: ${step.error || step.summary}`;
+      });
+    lines.push(...progress);
+
+    if (!names.length) {
+      const output = this.firstPlainOutput(task);
+      if (output) lines.push(clip(redactSecrets(output), this.config.output.maxReplyChars));
+    }
+
+    return clip(lines.filter(Boolean).join('\n'), this.config.output.maxReplyChars);
+  }
+
+  artifactNames(task, files) {
+    const fromFiles = files.map((file) => file.name).filter(Boolean);
+    const artifacts = task.artifacts || task.result?.artifacts || [];
+    const fromArtifacts = artifacts.map((artifact) => artifact.filename).filter(Boolean);
+    return [...new Set([...fromFiles, ...fromArtifacts])];
+  }
+
+  firstPlainOutput(task) {
+    const steps = task.result?.steps || [];
+    for (const step of steps) {
+      const result = step.result || {};
+      if (result.output) return result.output;
+      if (result.reply) return result.reply;
+      if (Array.isArray(result.sources) && result.sources.length) {
+        return result.sources.map((source) => `${source.title || source.source}: ${source.url || source.text || ''}`).join('\n');
+      }
+      if (Array.isArray(result.actions)) {
+        const action = result.actions.find((item) => item.data);
+        if (action) {
+          if (!Array.isArray(action.data)) return action.data;
+          return action.data
+            .map((item) => {
+              if (typeof item === 'string') return item;
+              if (item && item.text && item.href) return `${item.text}: ${item.href}`;
+              return JSON.stringify(item);
+            })
+            .join('\n');
+        }
+      }
+    }
+    return '';
   }
 
   async extractFiles(task) {

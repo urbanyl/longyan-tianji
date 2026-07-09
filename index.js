@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Partials } = require('discord.js');
+const { Client, Events, GatewayIntentBits, Partials } = require('discord.js');
 const config = require('./src/config');
 const MemoryManager = require('./src/memory');
 const BrowserAgent = require('./src/browser-agent');
@@ -69,7 +69,7 @@ async function main() {
 
   const handler = new DiscordHandler(client, orchestrator, config);
 
-  client.once('ready', () => {
+  client.once(Events.ClientReady, () => {
     console.log(`${config.brand.project} ${config.brand.bot} is online as ${client.user.tag}`);
   });
 

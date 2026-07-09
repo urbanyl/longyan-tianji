@@ -126,10 +126,22 @@ class BrowserAgent {
     }
 
     for (const selector of input.scrapes) {
-      await page.waitForSelector(selector);
-      const data = await page.$$eval(selector, (elements) =>
-        elements.map((element) => element.textContent.trim()).filter(Boolean)
-      );
+      await page.waitForSelector(selector, { state: 'attached' });
+      const data = await page.$$eval(selector, (elements) => {
+        const items = elements
+          .map((element) => {
+            const style = window.getComputedStyle(element);
+            const box = element.getBoundingClientRect();
+            const text = (element.innerText || element.textContent || '').trim();
+            return {
+              text,
+              visible: style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0 && box.height > 0
+            };
+          })
+          .filter((item) => item.text);
+        const visible = items.filter((item) => item.visible);
+        return (visible.length ? visible : items).map((item) => item.text);
+      });
       actions.push({ action: 'scrape', selector, data: take(data.map((item) => clip(item, 500)), input.limit) });
     }
 

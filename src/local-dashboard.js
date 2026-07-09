@@ -253,27 +253,29 @@ class LocalDashboard {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Longyan Tianji Dashboard</title>
   <style>
-    :root { color-scheme: light; --red:#c1121f; --ink:#172033; --muted:#667085; --line:#e6e8ee; --paper:#f7f8fb; }
+    :root { color-scheme: light; --red:#a40011; --ink:#1f2937; --muted:#667085; --line:#d8dde6; --paper:#f3f5f7; --panel:#ffffff; --nav:#111827; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, "Segoe UI", Arial, sans-serif; color:var(--ink); background:var(--paper); }
-    header { display:flex; align-items:center; gap:18px; padding:22px 28px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:1; }
-    header img { width:78px; height:78px; object-fit:contain; border-radius:14px; }
-    h1 { margin:0; font-size:26px; }
+    header { display:flex; align-items:center; gap:18px; padding:18px 28px; background:var(--panel); border-top:4px solid var(--red); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:1; }
+    header img { width:72px; height:72px; object-fit:contain; border-radius:3px; }
+    h1 { margin:0; font-size:24px; letter-spacing:0; }
     header p { margin:6px 0 0; color:var(--muted); }
     main { padding:24px; display:grid; grid-template-columns: minmax(320px, 420px) 1fr; gap:18px; }
-    section { background:#fff; border:1px solid var(--line); border-radius:8px; padding:16px; }
-    h2 { margin:0 0 12px; font-size:16px; }
+    section { background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:16px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+    h2 { margin:0 0 12px; font-size:16px; border-left:3px solid var(--red); padding-left:8px; }
     label { display:block; margin:10px 0 6px; font-size:12px; font-weight:700; color:#344054; text-transform:uppercase; }
-    input, textarea { width:100%; border:1px solid #ccd2df; border-radius:7px; padding:10px; font:inherit; }
+    input, select, textarea { width:100%; border:1px solid #c9ced8; border-radius:2px; padding:10px; font:inherit; background:#fff; }
+    input:focus, select:focus, textarea:focus { outline:2px solid rgba(164,0,17,.14); border-color:var(--red); }
     textarea { min-height:84px; resize:vertical; }
-    button { border:0; border-radius:7px; padding:10px 13px; font-weight:700; background:var(--red); color:#fff; cursor:pointer; }
-    button.secondary { background:#172033; }
+    button { border:1px solid var(--nav); border-radius:2px; padding:10px 13px; font-weight:700; background:var(--nav); color:#fff; cursor:pointer; }
+    button.secondary { background:#fff; color:var(--nav); border-color:#98a2b3; }
+    button:hover { filter:brightness(.96); }
     .row { display:flex; gap:8px; align-items:center; }
     .row > * { flex:1; }
     .grid { display:grid; grid-template-columns: repeat(4, minmax(120px,1fr)); gap:10px; margin-bottom:18px; }
-    .metric { background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px; }
+    .metric { background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:12px; border-top:3px solid #273142; }
     .metric b { display:block; font-size:22px; margin-top:4px; }
-    pre { white-space:pre-wrap; word-break:break-word; background:#0f172a; color:#e5e7eb; padding:12px; border-radius:8px; min-height:120px; max-height:420px; overflow:auto; }
+    pre { white-space:pre-wrap; word-break:break-word; background:#111827; color:#e5e7eb; padding:12px; border-radius:2px; min-height:120px; max-height:420px; overflow:auto; }
     .muted { color:var(--muted); font-size:13px; }
     @media (max-width: 980px) { main { grid-template-columns:1fr; } .grid { grid-template-columns: repeat(2, 1fr); } }
   </style>
@@ -294,6 +296,13 @@ class LocalDashboard {
         <label>Assistant name</label><input id="botName">
         <label>Call me</label><input id="userName">
         <label>Speaking style</label><input id="speakingStyle">
+        <label>Discord reply mode</label>
+        <select id="replyMode">
+          <option value="summary">summary - short readable result</option>
+          <option value="files">files - attachments first, no JSON block</option>
+          <option value="json">json - full debug payload</option>
+          <option value="silent">silent - status only</option>
+        </select>
         <label>Personality</label><textarea id="personality"></textarea>
         <label>Long-term notes</label><textarea id="notes"></textarea>
         <p><button onclick="saveProfile()">Save profile</button> <button class="secondary" onclick="loadProfile()">Reload</button></p>
@@ -351,11 +360,14 @@ function mb(value) { return Math.round(value / 1024 / 1024) + ' MB'; }
 async function loadProfile() {
   const profile = await api('/api/profile?userId=' + encodeURIComponent(userId()));
   for (const key of ['botName','userName','speakingStyle','personality','notes']) document.getElementById(key).value = profile[key] || '';
+  document.getElementById('replyMode').value = profile.preferences && profile.preferences.reply_mode ? profile.preferences.reply_mode : 'summary';
 }
 async function saveProfile() {
   const body = { userId: userId() };
   for (const key of ['botName','userName','speakingStyle','personality','notes']) body[key] = document.getElementById(key).value;
-  show('output', await api('/api/profile', { method:'POST', body: JSON.stringify(body) }));
+  await api('/api/profile', { method:'POST', body: JSON.stringify(body) });
+  await api('/api/preference', { method:'POST', body: JSON.stringify({ userId:userId(), key:'reply_mode', value:document.getElementById('replyMode').value }) });
+  show('output', await api('/api/profile?userId=' + encodeURIComponent(userId())));
 }
 async function saveMemory() {
   await api('/api/memory', { method:'POST', body: JSON.stringify({ userId:userId(), key:document.getElementById('memoryKey').value, value:document.getElementById('memoryValue').value }) });

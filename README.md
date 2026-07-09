@@ -17,7 +17,7 @@
 
 Longyan is the command engine. Tianji is the Discord operator that sits on top of it.
 
-The system turns Discord messages into controlled automation tasks. It can open pages, read public content, click and fill browser flows, run short Python or JavaScript snippets in Docker, generate PDF/Excel/image/JSON artifacts, keep scoped memory, and return concise results to Discord.
+The system turns Discord messages into controlled automation tasks. It can open pages, read public content, click and fill browser flows, run short Python or JavaScript snippets in Docker, generate PDF/Excel/image/JSON artifacts, keep scoped memory, and return configurable concise results to Discord.
 
 This repository has been hardened after a source-code audit. The default posture is now defensive: operational commands require an allowlist, Docker code execution starts without network access, browser automation blocks private networks, browser `eval` is disabled, and generated artifacts are size-limited and kept inside a managed temp directory.
 
@@ -43,15 +43,15 @@ Longyan / Tianji is useful when a trusted Discord workspace needs a compact auto
 
 | Capability | Description |
 | --- | --- |
-| Discord command intake | Prefix-based commands handled through Discord.js v14 |
+| Discord command intake | Prefix-based commands handled through Discord.js v14 with per-user reply modes |
 | Task planning | Local command router splits chained user instructions into typed steps |
 | Browser automation | Playwright Chromium opens pages, clicks, fills, reads text, extracts links, scrapes selectors, and captures screenshots |
 | Code execution | Python and JavaScript snippets run inside short-lived Docker containers |
-| File generation | PDF, `.xlsx`, PNG, and JSON artifacts can be generated and attached to Discord replies |
+| File generation | PDF, `.xlsx`, PNG, and JSON artifacts can be generated and attached to Discord replies without forcing verbose JSON output |
 | Research | Free public-web lookup through Wikipedia and DuckDuckGo, with optional SerpAPI bonus |
 | Personal assistant | Persistent user profile with assistant name, user name, speaking style, personality, preferences, and long notes |
 | Memory | SQLite stores task history, scoped key-value memory, and personal profiles |
-| Local dashboard | Browser-based localhost GUI for profile editing, memory, execution, research, config, and runtime usage |
+| Local dashboard | Browser-based localhost GUI for profile editing, reply mode, memory, execution, research, config, and runtime usage |
 | Operations | Queue, status, cancel, health, and session commands support operator workflows |
 
 ## Security Posture
@@ -228,7 +228,7 @@ Important: with `SECURITY_REQUIRE_ALLOWLIST=true`, Tianji will reject operationa
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DOCKER_SOCKET` | `/var/run/docker.sock` | Docker socket path. |
+| `DOCKER_SOCKET` | platform default | Docker socket path. Uses `/var/run/docker.sock` on Linux/macOS and `//./pipe/docker_engine` on Windows. |
 | `DOCKER_NETWORK` | `none` | Network mode for code containers. Keep `none` for untrusted code. |
 | `AUTO_PULL_IMAGES` | `false` | Auto-pulls missing images. Enable only in reviewed environments. |
 | `PYTHON_IMAGE` | `python:3.11-slim` | Python runtime image. Pin by digest for production. |
@@ -288,6 +288,7 @@ Important: with `SECURITY_REQUIRE_ALLOWLIST=true`, Tianji will reject operationa
 | `TEMP_DIR` | `./temp` | Managed artifact directory. Must stay inside project root unless explicitly allowed. |
 | `ALLOW_TEMP_DIR_OUTSIDE_ROOT` | `false` | Allows external temp directory after review. |
 | `TEMP_FILE_TTL_MS` | `86400000` | Temp artifact retention before cleanup. |
+| `DEFAULT_REPLY_MODE` | `summary` | Default Discord result mode: `summary`, `files`, `json`, or `silent`. |
 | `MAX_REPLY_CHARS` | `1800` | Max result block size before clipping. |
 | `MAX_ATTACHMENT_FILES` | `8` | Max files attached in one Discord reply. |
 | `MAX_ATTACHMENT_BYTES` | `8388608` | Max attachment size accepted for return. |
@@ -323,6 +324,13 @@ Important: with `SECURITY_REQUIRE_ALLOWLIST=true`, Tianji will reject operationa
 !help
 !ping
 !name
+!output
+!output files
+!output summary
+!output json
+!output silent
+!code off
+!code on
 ```
 
 ### Operations
@@ -340,6 +348,29 @@ Notes:
 - `!health` and `!queue` require admin allowlist.
 - `!status task_id` and `!cancel task_id` only work for the task owner unless the caller is admin.
 - `!session` shows the caller's session by default. Inspecting another session requires admin allowlist.
+
+### Reply Modes
+
+```text
+!output files
+!output summary
+!output json
+!output silent
+!assistant output files
+!code off
+!code on
+```
+
+Reply mode is saved in the user's assistant profile as `reply_mode`.
+
+| Mode | Behavior |
+| --- | --- |
+| `files` | Sends attachments first with a short status line. This is the best mode for PDF, Excel, image, and JSON artifact workflows when you do not want the verbose result payload. |
+| `summary` | Sends a short readable result with filenames and step summaries. |
+| `json` | Sends the full debug payload in a JSON block. Useful while developing commands. |
+| `silent` | Sends only the task status and ID, while still attaching eligible files. |
+
+`!code off` is a fast shortcut for `!output files`. `!code on` switches back to `!output json`.
 
 ### Memory
 
@@ -361,12 +392,13 @@ Memory is scoped by `MEMORY_SCOPE`. The default `user` scope prevents one user f
 !assistant style warm, concise, direct
 !assistant personality serious Chinese enterprise assistant
 !assistant notes user likes short operational answers
+!assistant output files
 !assistant remember timezone Europe/Paris
 !assistant forget timezone
 !remember preferred_language English
 ```
 
-The profile is stored in SQLite and follows the user. It includes the assistant name, the name it should use for the user, speaking style, personality, long-term notes, and structured preferences.
+The profile is stored in SQLite and follows the user. It includes the assistant name, the name it should use for the user, speaking style, personality, long-term notes, reply mode, and structured preferences.
 
 ### Browser Work
 
@@ -412,6 +444,7 @@ File safety notes:
 
 - Generated files are written only inside `TEMP_DIR`.
 - Attachment size and count are limited.
+- Use `!output files` or `!code off` when you want only a short completion line and the attached file, without the full JSON result block.
 - Excel values starting with `=`, `+`, `-`, or `@` are escaped to reduce formula injection risk.
 - Old temporary artifacts are pruned by TTL.
 
@@ -447,6 +480,7 @@ The dashboard lets you:
 - Rename the assistant.
 - Set how the assistant should call you.
 - Change the speaking style and personality in real time.
+- Switch Discord reply mode between summary, files, JSON, and silent.
 - Store long-term notes and preferences.
 - Add and list local memory.
 - Run research without SerpAPI.
@@ -459,7 +493,7 @@ Default URL:
 http://127.0.0.1:3010/
 ```
 
-When `npm run gui` is used, the dashboard is enabled and opened automatically. If `DISCORD_TOKEN` is missing, the process still runs in local-dashboard-only mode.
+When `npm run gui` is used, the dashboard is enabled and opened automatically. If `DISCORD_TOKEN` is missing, the process still runs in local-dashboard-only mode. The interface uses a restrained Chinese enterprise style: flat panels, square controls, a discrete red seal accent, and a dense operational layout.
 
 ## Deployment Checklist
 
@@ -485,6 +519,8 @@ Before running outside a local test machine:
 ### Discord
 
 The bot now applies an explicit command gate before operational commands run. It checks guild, channel, user, role, admin status, and per-user rate limits. Public commands are intentionally limited to low-risk helpers.
+
+Longyan / Tianji intentionally supports official Discord bot tokens only. It does not implement user account token or selfbot mode. This protects user accounts, keeps the project aligned with Discord platform rules, and avoids collecting login credentials. For a personal non-bot experience, use the local dashboard at `http://127.0.0.1:3010/`.
 
 ### Browser
 
@@ -574,6 +610,16 @@ docker pull node:20-slim
 ```
 
 Then start the bot again.
+
+### Docker is not reachable on Windows
+
+Leave `DOCKER_SOCKET` empty in `.env` so the app uses the Windows Docker Desktop named pipe automatically:
+
+```env
+DOCKER_SOCKET=
+```
+
+If Docker Desktop uses a custom endpoint, set `DOCKER_SOCKET` explicitly. The old Linux socket path `/var/run/docker.sock` only works on Linux-style Docker hosts; on Windows, Tianji maps that old default to the Docker Desktop pipe to avoid common local setup failures.
 
 ### Browser navigation to localhost or private IP fails
 
