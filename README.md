@@ -11,9 +11,6 @@ Longyan is the command engine. Tianji is the Discord operator inside it.
 
 It opens pages, reads them, clicks through flows, runs short Python or JavaScript jobs inside Docker, writes files, keeps memory, and turns rough Discord messages into clean execution plans.
 
-Project name: Long Yan  
-Bot name: Tian Ji
-
 ## Core
 
 | Layer | Runtime |
