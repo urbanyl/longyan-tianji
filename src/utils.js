@@ -1,3 +1,4 @@
+const path = require('path');
 const { randomUUID } = require('crypto');
 
 function id() {
@@ -35,6 +36,30 @@ function clip(value, limit = 1900) {
   const text = stringify(value);
   if (text.length <= limit) return text;
   return `${text.slice(0, Math.max(0, limit - 3))}...`;
+}
+
+function clipBytes(value, limit = 8192) {
+  const text = stringify(value);
+  if (Buffer.byteLength(text, 'utf8') <= limit) return text;
+
+  let size = 0;
+  let output = '';
+  for (const char of text) {
+    const next = Buffer.byteLength(char, 'utf8');
+    if (size + next > Math.max(0, limit - 3)) break;
+    size += next;
+    output += char;
+  }
+  return `${output}...`;
+}
+
+function redactSecrets(value) {
+  return stringify(value)
+    .replace(/\b(Bot|Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [redacted]')
+    .replace(/\b(discord[_-]?token|serpapi[_-]?key|api[_-]?key|authorization|cookie|token|secret|password)\b\s*[:=]\s*["']?[^"'\s,}]+/gi, '$1=[redacted]')
+    .replace(/[MN][A-Za-z\d_-]{20,30}\.[A-Za-z\d_-]{6,10}\.[A-Za-z\d_-]{20,40}/g, '[discord-token]')
+    .replace(/[A-Za-z]:\\[^\s"'`<>]+/g, '[local-path]')
+    .replace(/\/(?:home|root|var|tmp|app)\/[^\s"'`<>]+/g, '[local-path]');
 }
 
 function parseJson(value, fallback = null) {
@@ -87,6 +112,13 @@ function normalizeUrl(value) {
   const clean = String(value).trim().replace(/[)>.,]+$/g, '');
   if (!clean) return null;
   return /^https?:\/\//i.test(clean) ? clean : `https://${clean}`;
+}
+
+function isPathInside(base, target) {
+  const root = path.resolve(base);
+  const resolved = path.resolve(target);
+  const relative = path.relative(root, resolved);
+  return !relative || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 function stripHtml(value) {
@@ -198,9 +230,12 @@ module.exports = {
   sleep,
   stringify,
   clip,
+  clipBytes,
+  redactSecrets,
   parseJson,
   extractJsonPayload,
   normalizeUrl,
+  isPathInside,
   stripHtml,
   escapeXml,
   safeFilename,

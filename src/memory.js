@@ -140,9 +140,14 @@ class MemoryManager {
     return row ? parseJson(row.value, row.value) : null;
   }
 
-  async listMemory(limit = 20) {
+  async listMemory(limit = 20, prefix = '') {
     await this.ready;
-    const rows = await this.all('SELECT key, value, updated_at FROM memory ORDER BY updated_at DESC LIMIT ?', [limit]);
+    const rows = prefix
+      ? await this.all(
+          'SELECT key, value, updated_at FROM memory WHERE key LIKE ? ORDER BY updated_at DESC LIMIT ?',
+          [`${prefix}%`, limit]
+        )
+      : await this.all('SELECT key, value, updated_at FROM memory ORDER BY updated_at DESC LIMIT ?', [limit]);
     return rows.map((row) => ({
       key: row.key,
       value: parseJson(row.value, row.value),

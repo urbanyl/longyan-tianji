@@ -1,5 +1,7 @@
 const path = require('path');
-const { clip, formatMs, stringify } = require('./utils');
+const { promises: fs } = require('fs');
+const { AccessController, RateLimiter } = require('./security');
+const { clip, formatMs, isPathInside, redactSecrets } = require('./utils');
 
 class DiscordHandler {
   constructor(client, orchestrator, config) {
@@ -8,6 +10,11 @@ class DiscordHandler {
     this.config = config;
     this.brand = config.brand;
     this.commands = new Map();
+    this.access = new AccessController({
+      ...config.security,
+      memoryScope: config.memory.scope
+    });
+    this.rateLimiter = new RateLimiter(config.security);
     this.register();
     this.events();
   }
@@ -47,7 +54,8 @@ class DiscordHandler {
     const task = await this.orchestrator.execute(command, {
       sessionId: message.author.id,
       userId: message.author.id,
-      channelId: message.channel.id
+      channelId: message.channel.id,
+      guildId: message.guildId || null
     });
 
     const done = await this.orchestrator.waitForTask(task.id, this.config.execution.replyWaitMs);
@@ -65,6 +73,7 @@ class DiscordHandler {
 
     const task = await this.orchestrator.getStatus(taskId);
     if (!task) return message.reply('Task not found.');
+    if (!this.access.canReadTask(message, task)) return message.reply('Task not found.');
 
     return await this.replyWithTask(message, task);
   }
@@ -72,6 +81,9 @@ class DiscordHandler {
   async cancel(message, args) {
     const taskId = args[0];
     if (!taskId) return message.reply('Send a task id.');
+
+    const existing = await this.orchestrator.getStatus(taskId);
+    if (!existing || !this.access.canReadTask(message, existing)) return message.reply(`Task ${taskId} was not found.`);
 
     const task = await this.orchestrator.cancelTask(taskId);
     return message.reply(task ? `Cancelled ${taskId}.` : `Task ${taskId} was not found.`);
@@ -81,38 +93,45 @@ class DiscordHandler {
     const action = (args[0] || '').toLowerCase();
 
     if (!action) return message.reply(`Usage: ${this.brand.prefix}memory set key value | get key | list | delete key`);
+    const prefix = this.access.memoryPrefix(message);
 
     if (action === 'list') {
-      const items = await this.orchestrator.memory.listMemory(20);
+      const items = await this.orchestrator.memory.listMemory(this.config.memory.listLimit, prefix);
       if (!items.length) return message.reply('Memory is empty.');
-      const lines = items.map((item) => `${item.key}: ${clip(item.value, 80)}`).join('\n');
+      const lines = items.map((item) => `${item.key.slice(prefix.length)}: ${clip(redactSecrets(item.value), 80)}`).join('\n');
       return message.reply(`\`\`\`\n${clip(lines, 1800)}\n\`\`\``);
     }
 
     if (action === 'delete') {
       const key = args[1];
       if (!key) return message.reply('Send a key.');
-      const deleted = await this.orchestrator.memory.deleteMemory(key);
+      const deleted = await this.orchestrator.memory.deleteMemory(`${prefix}${key}`);
       return message.reply(deleted ? `Deleted ${key}.` : `${key} was not found.`);
     }
 
     if (action === 'get') {
       const key = args[1];
       if (!key) return message.reply('Send a key.');
-      const value = await this.orchestrator.memory.getMemory(key);
-      return message.reply(`\`\`\`\n${clip(value ?? 'empty', 1800)}\n\`\`\``);
+      const value = await this.orchestrator.memory.getMemory(`${prefix}${key}`);
+      return message.reply(`\`\`\`\n${clip(redactSecrets(value ?? 'empty'), 1800)}\n\`\`\``);
     }
 
     const key = action === 'set' ? args[1] : args[0];
     const value = action === 'set' ? args.slice(2).join(' ') : args.slice(1).join(' ');
 
     if (!key || !value) return message.reply(`Usage: ${this.brand.prefix}memory set key value`);
-    await this.orchestrator.memory.setMemory(key, value);
+    if (key.includes(':')) return message.reply('Memory keys cannot contain colon characters.');
+    if (value.length > this.config.memory.maxValueChars) {
+      return message.reply(`Memory value is too long. Limit: ${this.config.memory.maxValueChars} characters.`);
+    }
+    await this.orchestrator.memory.setMemory(`${prefix}${key}`, value);
     return message.reply(`Stored ${key}.`);
   }
 
   async session(message, args) {
     const sessionId = args[0] || message.author.id;
+    if (!this.access.canUseSession(message, sessionId)) return message.reply('No tasks found for this session.');
+
     const tasks = await this.orchestrator.getSession(sessionId);
 
     if (!tasks.length) return message.reply('No tasks found for this session.');
@@ -138,7 +157,7 @@ class DiscordHandler {
 
   async health(message) {
     const health = await this.orchestrator.health();
-    return message.reply(`\`\`\`json\n${clip(health, 1800)}\n\`\`\``);
+    return message.reply(`\`\`\`json\n${clip(redactSecrets(health), 1800)}\n\`\`\``);
   }
 
   async help(message) {
@@ -159,12 +178,12 @@ class DiscordHandler {
   }
 
   async replyWithTask(message, task) {
-    const files = this.extractFiles(task);
+    const files = await this.extractFiles(task);
     const status = task.status || 'unknown';
     const duration = task.duration ? ` in ${formatMs(task.duration)}` : '';
     const header = `${this.brand.bot} ${status}${duration} ${task.id ? `[${task.id.slice(0, 8)}]` : ''}`.trim();
     const payload = status === 'completed' ? task.result : { error: task.error, progress: task.progress };
-    const content = `${header}\n\`\`\`json\n${clip(payload, this.config.output.maxReplyChars)}\n\`\`\``;
+    const content = `${header}\n\`\`\`json\n${clip(redactSecrets(payload), this.config.output.maxReplyChars)}\n\`\`\``;
 
     return message.reply({
       content: clip(content, 2000),
@@ -172,12 +191,24 @@ class DiscordHandler {
     });
   }
 
-  extractFiles(task) {
+  async extractFiles(task) {
     const artifacts = task.artifacts || task.result?.artifacts || [];
-    return artifacts.slice(0, this.config.output.maxAttachmentFiles).map((artifact) => ({
-      attachment: artifact.filepath,
-      name: artifact.filename || path.basename(artifact.filepath)
-    }));
+    const files = [];
+
+    for (const artifact of artifacts.slice(0, this.config.output.maxAttachmentFiles)) {
+      const filepath = path.resolve(artifact.filepath || '');
+      if (!isPathInside(this.config.output.tempDir, filepath)) continue;
+
+      const stat = await fs.stat(filepath).catch(() => null);
+      if (!stat || !stat.isFile() || stat.size > this.config.output.maxAttachmentBytes) continue;
+
+      files.push({
+        attachment: filepath,
+        name: artifact.filename || path.basename(filepath)
+      });
+    }
+
+    return files;
   }
 
   async handleMessage(message) {
@@ -185,14 +216,28 @@ class DiscordHandler {
 
     const body = message.content.slice(this.brand.prefix.length).trim();
     const [name, ...args] = body.split(/\s+/);
-    const command = this.commands.get((name || '').toLowerCase());
+    const commandName = (name || '').toLowerCase();
+    const command = this.commands.get(commandName);
 
     if (!command) return;
 
     try {
+      const access = this.access.canRun(message, commandName);
+      if (!access.ok) {
+        console.warn(`${this.brand.bot} denied command=${commandName} user=${message.author.id} channel=${message.channel.id} reason=${access.reason}`);
+        return await message.reply(access.reason);
+      }
+
+      const rate = this.rateLimiter.check(message, access.admin);
+      if (!rate.ok) {
+        console.warn(`${this.brand.bot} rate-limited user=${message.author.id} command=${commandName}`);
+        return await message.reply(`Rate limit reached. Try again in ${Math.ceil(rate.retryAfterMs / 1000)}s.`);
+      }
+
+      console.log(`${this.brand.bot} accepted command=${commandName} user=${message.author.id} channel=${message.channel.id}`);
       await command(message, args);
     } catch (error) {
-      await message.reply(`${this.brand.bot} error: ${error.message}`);
+      await message.reply(`${this.brand.bot} error: ${redactSecrets(error.message)}`);
     }
   }
 }

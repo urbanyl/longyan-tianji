@@ -17,11 +17,25 @@ class Orchestrator extends EventEmitter {
   }
 
   async execute(command, context = {}) {
+    const cleanCommand = String(command || '').trim();
+    if (!cleanCommand) throw new Error('Command is empty.');
+    if (cleanCommand.length > this.config.execution.maxCommandChars) {
+      throw new Error(`Command is too long. Limit: ${this.config.execution.maxCommandChars} characters.`);
+    }
+    if (this.taskQueue.length >= this.config.execution.maxQueueSize) {
+      throw new Error(`Task queue is full. Limit: ${this.config.execution.maxQueueSize}.`);
+    }
+    if (context.userId && this.queuedCountForUser(context.userId) >= this.config.execution.maxQueuedTasksPerUser) {
+      throw new Error(`Too many queued tasks for this user. Limit: ${this.config.execution.maxQueuedTasksPerUser}.`);
+    }
+
     const task = {
       id: id(),
       sessionId: context.sessionId || id(),
       userId: context.userId || null,
-      command: String(command || '').trim(),
+      channelId: context.channelId || null,
+      guildId: context.guildId || null,
+      command: cleanCommand,
       plan: null,
       progress: [],
       artifacts: [],
@@ -35,10 +49,20 @@ class Orchestrator extends EventEmitter {
     };
 
     task.plan = this.planner.plan(task.command);
+    if (task.plan.steps.length > this.config.execution.maxPlanSteps) {
+      throw new Error(`Too many execution steps. Limit: ${this.config.execution.maxPlanSteps}.`);
+    }
+
     this.taskQueue.push(task);
     this.emit('taskQueued', task);
     this.processQueue();
     return task;
+  }
+
+  queuedCountForUser(userId) {
+    const queued = this.taskQueue.filter((task) => task.userId === userId).length;
+    const active = [...this.activeTasks.values()].filter((task) => task.userId === userId).length;
+    return queued + active;
   }
 
   processQueue() {
@@ -57,6 +81,7 @@ class Orchestrator extends EventEmitter {
           task.duration = task.completedAt - task.createdAt;
           this.activeTasks.delete(task.id);
           await this.memory.saveTask(task).catch((error) => this.emit('memoryError', error));
+          await this.fileGenerator.pruneExpired().catch(() => {});
           this.emit(task.status === 'completed' ? 'taskCompleted' : 'taskFailed', task);
           this.processQueue();
         });
@@ -67,13 +92,23 @@ class Orchestrator extends EventEmitter {
     task.status = 'running';
     this.emit('taskStarted', task);
 
-    await Promise.race([
-      this.executePlan(task),
-      sleep(this.config.execution.taskTimeoutMs).then(() => {
-        task.cancelled = true;
-        throw new Error(`Task timed out after ${formatMs(this.config.execution.taskTimeoutMs)}`);
-      })
-    ]);
+    try {
+      await Promise.race([
+        this.executePlan(task),
+        sleep(this.config.execution.taskTimeoutMs).then(() => {
+          task.cancelled = true;
+          throw new Error(`Task timed out after ${formatMs(this.config.execution.taskTimeoutMs)}`);
+        })
+      ]);
+    } catch (error) {
+      if (task.cancelled) {
+        await Promise.all([
+          this.browser.cancelTask(task.id).catch(() => {}),
+          this.codeRunner.cancelTask(task.id).catch(() => {})
+        ]);
+      }
+      throw error;
+    }
   }
 
   async executePlan(task) {
@@ -117,7 +152,7 @@ class Orchestrator extends EventEmitter {
 
   async executeStep(step, task) {
     if (step.type === 'browser') return await this.browserStep(step, task);
-    if (step.type === 'code') return await this.codeRunner.run(step.input);
+    if (step.type === 'code') return await this.codeRunner.run(step.input, { taskId: task.id });
     if (step.type === 'file') return await this.fileStep(step, task);
     if (step.type === 'research') return await this.research.search(step.input.query);
     return {
@@ -128,7 +163,7 @@ class Orchestrator extends EventEmitter {
   }
 
   async browserStep(step, task) {
-    const result = await this.browser.execute(step.input);
+    const result = await this.browser.execute(step.input, { taskId: task.id });
 
     if (result.screenshot) {
       const artifact = await this.fileGenerator.saveBuffer(result.screenshot, 'png', {
@@ -212,6 +247,10 @@ class Orchestrator extends EventEmitter {
       active.cancelled = true;
       active.status = 'cancelled';
       active.completedAt = Date.now();
+      await Promise.all([
+        this.browser.cancelTask(taskId).catch(() => {}),
+        this.codeRunner.cancelTask(taskId).catch(() => {})
+      ]);
       await this.memory.saveTask(active).catch(() => {});
       return active;
     }
@@ -244,8 +283,9 @@ class Orchestrator extends EventEmitter {
 
   async shutdown() {
     this.closed = true;
+    const active = [...this.activeTasks.values()];
 
-    for (const task of this.activeTasks.values()) {
+    for (const task of active) {
       task.cancelled = true;
       task.status = 'shutdown';
       task.completedAt = Date.now();
@@ -253,6 +293,10 @@ class Orchestrator extends EventEmitter {
 
     this.taskQueue = [];
     this.activeTasks.clear();
+    await Promise.all([
+      ...active.map((task) => this.browser.cancelTask(task.id).catch(() => {})),
+      ...active.map((task) => this.codeRunner.cancelTask(task.id).catch(() => {}))
+    ]);
     await this.browser.close().catch(() => {});
     this.codeRunner.cleanup();
     await this.fileGenerator.cleanup().catch(() => {});

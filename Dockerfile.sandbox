@@ -1,5 +1,7 @@
 FROM python:3.11-slim
-WORKDIR /app
-RUN useradd -m tianji
-USER tianji
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+WORKDIR /tmp
+RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin tianji
+USER 1000:1000
 CMD ["python", "-c", "print('Tianji sandbox ready')"]
