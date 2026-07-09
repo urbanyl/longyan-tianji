@@ -137,6 +137,11 @@ src/memory.js
 src/utils.js
 ```
 
+## Security Audit
+
+An enterprise source-code audit by 安恒信息 is available here:
+[AH-CODE-2026-0042](CODE_AUDIT_AH-CODE-2026-0042.md).
+
 ## License
 
 MIT.
