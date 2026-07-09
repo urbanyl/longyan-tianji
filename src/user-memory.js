@@ -5,6 +5,9 @@ class UserMemory {
   constructor(memoryDir = "./data/user-memory") {
 	this.memoryDir = memoryDir;
 
+	// Max conversation length configurable via env, default large
+	this.maxConversationLength = Number.parseInt(process.env.USER_MEMORY_MAX_CONVERSATION_LENGTH || '') || 500;
+
 	// Créer le répertoire s'il n'existe pas
 	if (!fs.existsSync(this.memoryDir)) {
 	  fs.mkdirSync(this.memoryDir, { recursive: true });
@@ -98,9 +101,9 @@ class UserMemory {
   addMessage(userId, role, content) {
 	const memory = this.load(userId);
 
-	// Limiter l'historique à 50 messages (environ 25 échanges)
-	if (memory.conversationHistory.length >= 50) {
-	  memory.conversationHistory = memory.conversationHistory.slice(-49);
+	// Limiter l'historique en fonction de la configuration (par défaut large)
+	if (memory.conversationHistory.length >= this.maxConversationLength) {
+	  memory.conversationHistory = memory.conversationHistory.slice(- (this.maxConversationLength - 1));
 	}
 
 	memory.conversationHistory.push({

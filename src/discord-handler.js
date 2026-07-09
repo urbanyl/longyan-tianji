@@ -536,14 +536,19 @@ ${clip(redactSecrets(payload), this.config.output.maxReplyChars)}
   }
 
   async handleMessage(message) {
-    if (!message || message.author.bot || !message.content.startsWith(this.brand.prefix)) return;
+    if (!message || message.author.bot) return;
 
-    const body = message.content.slice(this.brand.prefix.length).trim();
-    const [name, ...args] = body.split(/\s+/);
-    const commandName = (name || '').toLowerCase();
-    const command = this.commands.get(commandName);
+    // Ignore messages that ping everyone
+    if (message.mentions && message.mentions.everyone) return;
 
-    if (!command) return;
+    // If message starts with prefix => command handling (existing behavior)
+    if (message.content.startsWith(this.brand.prefix)) {
+      const body = message.content.slice(this.brand.prefix.length).trim();
+      const [name, ...args] = body.split(/\s+/);
+      const commandName = (name || '').toLowerCase();
+      const command = this.commands.get(commandName);
+
+      if (!command) return;
 
     try {
       const access = this.access.canRun(message, commandName);
@@ -562,6 +567,44 @@ ${clip(redactSecrets(payload), this.config.output.maxReplyChars)}
       await command(message, args);
     } catch (error) {
       await message.reply(`${this.brand.bot} error: ${redactSecrets(error.message)}`);
+    }
+      return;
+    }
+
+    // Non-prefix messages: respond when bot is mentioned or called by name
+    try {
+      const content = message.content || '';
+
+      const calledByName = /\b(tianji)\b/i.test(content) || content.includes('天机');
+      const mentioned = message.mentions && message.mentions.has && message.mentions.has(this.client.user);
+
+      if (!mentioned && !calledByName) return;
+
+      // Ensure OpenRouter and memory are available
+      if (!this.openrouter || !this.userMemory) return;
+
+      // Typing indicator
+      await message.channel.sendTyping().catch(() => {});
+
+      const userId = message.author.id;
+      const userMem = this.userMemory.load(userId);
+      const conversationHistory = (userMem.conversationHistory || []).map(m => ({ role: m.role, content: m.content }));
+
+      // Record the incoming message
+      this.userMemory.recordInteraction(userId, { type: 'message', content: content });
+      this.userMemory.addMessage(userId, 'user', content);
+
+      // Call OpenRouter (non-streaming)
+      const reply = await this.openrouter.chat(content, conversationHistory);
+
+      // Save assistant reply
+      this.userMemory.addMessage(userId, 'assistant', reply);
+
+      // Reply with plain text
+      await message.reply({ content: reply }).catch(() => {});
+    } catch (err) {
+      console.error('Auto-reply error:', err);
+      try { await message.reply({ content: `Error: ${err.message}` }); } catch {};
     }
   }
 
