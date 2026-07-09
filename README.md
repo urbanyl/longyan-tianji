@@ -520,7 +520,7 @@ Before running outside a local test machine:
 
 The bot now applies an explicit command gate before operational commands run. It checks guild, channel, user, role, admin status, and per-user rate limits. Public commands are intentionally limited to low-risk helpers.
 
-Longyan / Tianji intentionally supports official Discord bot tokens only. It does not implement user account token or selfbot mode. This protects user accounts, keeps the project aligned with Discord platform rules, and avoids collecting login credentials. For a personal non-bot experience, use the local dashboard at `http://127.0.0.1:3010/`.
+Longyan / Tianji primarily supports official Discord bot tokens. User token mode (selfbot) is available through `DISCORD_USER_TOKEN_MODE=true` but is against Discord Terms of Service and should only be used with full awareness of the risks. For a personal non-bot experience, the recommended approach is to use the local dashboard at `http://127.0.0.1:3010/`.
 
 ### Browser
 

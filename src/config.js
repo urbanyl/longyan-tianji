@@ -66,7 +66,8 @@ module.exports = Object.freeze({
   }),
   discord: Object.freeze({
     token: text('DISCORD_TOKEN'),
-    clientId: text('DISCORD_CLIENT_ID')
+    clientId: text('DISCORD_CLIENT_ID'),
+    userTokenMode: boolean('DISCORD_USER_TOKEN_MODE', false)
   }),
   execution: Object.freeze({
     maxConcurrentTasks: boundedInteger('MAX_CONCURRENT_TASKS', 4, 1, 25),

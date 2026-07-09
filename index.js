@@ -58,13 +58,27 @@ async function main() {
     throw new Error('DISCORD_TOKEN is missing.');
   }
 
+  if (config.discord.userTokenMode) {
+    console.warn('DISCORD_USER_TOKEN_MODE is enabled. Using user token (selfbot mode).');
+    console.warn('This is against Discord Terms of Service. Use at your own risk.');
+  }
+
   client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.MessageContent
-    ],
-    partials: [Partials.Channel, Partials.Message]
+    intents: config.discord.userTokenMode
+      ? [
+          GatewayIntentBits.Guilds,
+          GatewayIntentBits.GuildMessages,
+          GatewayIntentBits.DirectMessages,
+          GatewayIntentBits.MessageContent
+        ]
+      : [
+          GatewayIntentBits.Guilds,
+          GatewayIntentBits.GuildMessages,
+          GatewayIntentBits.MessageContent
+        ],
+    partials: config.discord.userTokenMode
+      ? [Partials.Channel, Partials.Message, Partials.User]
+      : [Partials.Channel, Partials.Message]
   });
 
   const handler = new DiscordHandler(client, orchestrator, config);
