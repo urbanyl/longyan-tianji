@@ -107,6 +107,13 @@ async function main() {
     console.log(`${config.brand.project} ${config.brand.bot} is online as ${client.user.tag}`);
     console.log(`Slash commands are available! Add the bot to your server.`);
 
+    // Set presence: Listening status in Chinese
+    try {
+      await client.user.setPresence({ activities: [{ name: '我是一个由 urbanyl 开发的中文代理', type: 2 }], status: 'online' });
+    } catch (err) {
+      console.warn('Failed to set presence:', err.message);
+    }
+
     // Déployer les slash commands
     const slashRegistry = new SlashCommandRegistry();
     slashRegistry.registerAll();
