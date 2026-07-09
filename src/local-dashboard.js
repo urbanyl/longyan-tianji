@@ -14,15 +14,37 @@ class LocalDashboard {
   }
 
   async start() {
-    await new Promise((resolve, reject) => {
-      this.server.once('error', reject);
-      this.server.listen(this.config.port, this.config.host, () => {
-        this.server.off('error', reject);
-        resolve();
-      });
-    });
+    // Try to bind to configured port. If port is in use, try next ports up to a limit.
+    const maxAttempts = 10;
+    let attempt = 0;
+    let bound = false;
+    let port = Number(this.config.port) || 3010;
 
-    const url = `http://${this.config.host}:${this.config.port}/`;
+    while (!bound && attempt < maxAttempts) {
+      try {
+        await new Promise((resolve, reject) => {
+          const onError = (err) => reject(err);
+          this.server.once('error', onError);
+          this.server.listen(port, this.config.host, () => {
+            this.server.off('error', onError);
+            resolve();
+          });
+        });
+        bound = true;
+      } catch (err) {
+        if (err && err.code === 'EADDRINUSE') {
+          console.warn(`Port ${port} is in use, trying ${port + 1}...`);
+          port += 1;
+          attempt += 1;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!bound) throw new Error(`Unable to bind local dashboard after ${maxAttempts} attempts starting at port ${this.config.port}`);
+
+    const url = `http://${this.config.host}:${port}/`;
     console.log(`${this.rootConfig.brand.bot} local dashboard is available at ${url}`);
     if (this.config.open) this.openBrowser(url);
     return url;

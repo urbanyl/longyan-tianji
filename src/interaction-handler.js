@@ -365,7 +365,7 @@ class InteractionHandler {
 			const fields = [
 			  { name: l.uptime, value: `${hours}h ${minutes}m`, inline: true },
 			  { name: l.guilds, value: `${this.client.guilds.cache.size}`, inline: true },
-			  { name: l.version, value: "1.1.0", inline: true }
+			  { name: l.version, value: "0.0.8", inline: true }
 			];
 
 			const embed = this.embedBuilder.createCommandEmbed(

@@ -1,7 +1,8 @@
 const path = require('path');
-require('dotenv').config();
-
 const rootDir = path.resolve(__dirname, '..');
+// Load environment variables from the project root .env explicitly so the
+// configuration is correct regardless of the current working directory.
+require('dotenv').config({ path: path.resolve(rootDir, '.env') });
 
 function text(name, fallback = '') {
   const value = process.env[name];
@@ -66,7 +67,8 @@ module.exports = Object.freeze({
   }),
   discord: Object.freeze({
     token: text('DISCORD_TOKEN'),
-    clientId: text('DISCORD_CLIENT_ID'),
+    clientId: text('DISCORD_CLIENT_ID')
+,
     userTokenMode: boolean('DISCORD_USER_TOKEN_MODE', false)
   }),
   execution: Object.freeze({
@@ -156,6 +158,10 @@ module.exports = Object.freeze({
     freeSearchEnabled: boolean('FREE_SEARCH_ENABLED', true),
     timeoutMs: integer('RESEARCH_TIMEOUT_MS', 12000, 1000),
     maxResults: boundedInteger('RESEARCH_MAX_RESULTS', 5, 1, 20)
+  }),
+  openrouter: Object.freeze({
+    apiKey: text('OPENROUTER_API_KEY'),
+    model: text('OPENROUTER_MODEL', 'tencent/hy3:free')
   }),
   localDashboard: Object.freeze({
     enabled: boolean('LOCAL_DASHBOARD_ENABLED', false),
