@@ -322,17 +322,27 @@ class DiscordHandler {
     
     if (mode === 'json') {
       const payload = status === 'completed' ? task.result : { error: task.error, progress: task.progress };
-      embed.setDescription(```json
-${clip(redactSecrets(payload), this.config.output.maxReplyChars)}
-```);
+      embed.setDescription(`\`\`\`json\n${clip(redactSecrets(payload), this.config.output.maxReplyChars)}\n\`\`\``);
     } else {
       const content = this.taskReplyContent(task, files, '', mode);
       if (content) embed.setDescription(content);
     }
 
+    const attachments = [...files];
+    
+    // Add approved.png when task is completed successfully
+    if (status === 'completed') {
+      const approvedPath = path.join(__dirname, '..', 'assets', 'approved.png');
+      attachments.push({
+        attachment: approvedPath,
+        name: 'approved.png'
+      });
+      embed.setImage('attachment://approved.png');
+    }
+
     return message.reply({
       embeds: [embed],
-      files
+      files: attachments
     });
   }
 
