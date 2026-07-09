@@ -1,8 +1,9 @@
-const { createReadStream } = require('fs');
+const { createReadStream, promises: fsPromises } = require('fs');
 const { createServer } = require('http');
 const path = require('path');
 const { spawn } = require('child_process');
 const { redactSecrets } = require('./utils');
+const OpenRouterHandler = require('./openrouter-handler');
 
 class LocalDashboard {
   constructor({ config, orchestrator }) {
@@ -68,6 +69,11 @@ class LocalDashboard {
 
       if (req.method === 'GET' && url.pathname === '/api/health') return await this.health(res);
       if (req.method === 'GET' && url.pathname === '/api/config') return this.configJson(res);
+      if (req.method === 'GET' && url.pathname === '/api/env') return await this.env(res);
+      if (req.method === 'POST' && url.pathname === '/api/env') return await this.setEnv(req, res);
+      if (req.method === 'POST' && url.pathname === '/api/restart') return await this.restart(req, res);
+      if (req.method === 'POST' && url.pathname === '/api/openrouter/test') return await this.testOpenRouter(req, res);
+      if (req.method === 'GET' && url.pathname === '/api/audit') return await this.auditList(res);
       if (req.method === 'GET' && url.pathname === '/api/profile') return await this.profile(res, url);
       if (req.method === 'POST' && url.pathname === '/api/profile') return await this.updateProfile(req, res);
       if (req.method === 'POST' && url.pathname === '/api/preference') return await this.preference(req, res);
@@ -84,6 +90,93 @@ class LocalDashboard {
     } catch (error) {
       return this.json(res, 500, { error: redactSecrets(error.message) });
     }
+
+  auditAppend(entry) {
+    try {
+      const logPath = path.join(this.rootConfig.rootDir, 'local-dashboard-audit.log');
+      const line = `${new Date().toISOString()} ${entry}\n`;
+      fsPromises.appendFile(logPath, line).catch(() => {});
+    } catch (err) {}
+  }
+
+  async auditList(res) {
+    try {
+      const logPath = path.join(this.rootConfig.rootDir, 'local-dashboard-audit.log');
+      const raw = await fsPromises.readFile(logPath, 'utf8').catch(() => '');
+      return this.json(res, 200, { log: raw.split('\n').filter(Boolean).slice(-200) });
+    } catch (error) {
+      return this.json(res, 500, { error: 'Unable to read audit log.' });
+    }
+  }
+
+  async env(res) {
+    try {
+      const envPath = path.resolve(this.rootConfig.rootDir, '.env');
+      const raw = await fsPromises.readFile(envPath, 'utf8').catch(() => '');
+      // Redact secrets before returning
+      const redacted = raw
+        .replace(/(DISCORD_TOKEN)=.*/g, '$1=[redacted]')
+        .replace(/(DISCORD_USER_TOKEN)=.*/g, '$1=[redacted]')
+        .replace(/(OPENROUTER_API_KEY)=.*/g, '$1=[redacted]')
+        .replace(/(LOCAL_DASHBOARD_TOKEN)=.*/g, '$1=[redacted]');
+      return this.json(res, 200, { env: redacted });
+    } catch (error) {
+      return this.json(res, 500, { error: 'Unable to read .env' });
+    }
+  }
+
+  async setEnv(req, res) {
+    try {
+      const body = await this.body(req);
+      const envText = body.env || '';
+      const envPath = path.resolve(this.rootConfig.rootDir, '.env');
+      await fsPromises.writeFile(envPath, envText, 'utf8');
+      // Update process.env for immediate use (best-effort)
+      envText.split(/\r?\n/).forEach((line) => {
+        const m = line.match(/^([^=#]+)=(.*)$/);
+        if (m) {
+          const k = m[1].trim();
+          let v = m[2] || '';
+          // remove surrounding quotes
+          if ((v.startsWith("\"") && v.endsWith("\"")) || (v.startsWith("'") && v.endsWith("'"))) {
+            v = v.slice(1, -1);
+          }
+          process.env[k] = v;
+        }
+      });
+      this.auditAppend(`env updated via dashboard`);
+      return this.json(res, 200, { ok: true });
+    } catch (error) {
+      return this.json(res, 500, { error: 'Unable to write .env' });
+    }
+  }
+
+  async restart(req, res) {
+    // append audit then respond and exit
+    this.auditAppend('restart requested via dashboard');
+    this.json(res, 200, { ok: true });
+    // slight delay to let response flush
+    setTimeout(() => process.exit(0), 250);
+  }
+
+  async testOpenRouter(req, res) {
+    try {
+      const body = await this.body(req);
+      const apiKey = (body && body.apiKey) || process.env.OPENROUTER_API_KEY || '';
+      if (!apiKey) return this.json(res, 400, { error: 'apiKey is required' });
+      try {
+        const handler = new OpenRouterHandler(apiKey);
+        const ok = await handler.testConnection();
+        this.auditAppend(`openrouter test: ${ok}`);
+        return this.json(res, 200, { ok });
+      } catch (err) {
+        this.auditAppend(`openrouter test failed: ${String(err.message)}`);
+        return this.json(res, 500, { error: err.message });
+      }
+    } catch (error) {
+      return this.json(res, 500, { error: 'Test failed' });
+    }
+  }
   }
 
   authorized(req, url) {
@@ -359,6 +452,9 @@ class LocalDashboard {
         <p class="muted">Secrets are redacted by the local API.</p>
         <p><button class="secondary" onclick="loadConfig()">Show config</button> <button class="secondary" onclick="loadHealth()">Refresh health</button></p>
         <pre id="configOut"></pre>
+        <p style="margin-top:12px"><button onclick="loadEnv()">Edit .env</button> <button class="secondary" onclick="testOpenRouter()">Test OpenRouter</button> <button class="secondary" onclick="restartServer()">Restart Server</button></p>
+        <textarea id="envArea" style="min-height:120px;display:none;margin-top:8px"></textarea>
+        <p id="envActions" style="display:none"><button onclick="saveEnv()">Save .env</button> <button class="secondary" onclick="cancelEnv()">Cancel</button></p>
       </section>
     </div>
   </main>
@@ -414,6 +510,35 @@ async function loadHealth() {
 loadProfile().catch(console.error);
 loadMemory().catch(console.error);
 loadHealth().catch(console.error);
+async function loadEnv() {
+  try {
+    const res = await api('/api/env');
+    const area = document.getElementById('envArea');
+    area.value = res.env || '';
+    area.style.display = 'block';
+    document.getElementById('envActions').style.display = 'block';
+  } catch (err) { console.error(err); alert(err.message); }
+}
+function cancelEnv() { document.getElementById('envArea').style.display='none'; document.getElementById('envActions').style.display='none'; }
+async function saveEnv() {
+  try {
+    const text = document.getElementById('envArea').value;
+    await api('/api/env', { method:'POST', body: JSON.stringify({ env: text }) });
+    alert('Saved. If you changed tokens, click Restart Server to apply.');
+  } catch (err) { console.error(err); alert(err.message); }
+}
+async function testOpenRouter() {
+  try {
+    const apiKey = prompt('Paste OpenRouter API key to test (leave empty to use current .env):');
+    const body = apiKey ? { apiKey } : {};
+    const res = await api('/api/openrouter/test', { method:'POST', body: JSON.stringify(body) });
+    alert('OpenRouter test: ' + (res.ok ? 'OK' : 'Failed'));
+  } catch (err) { console.error(err); alert('Test failed: ' + (err.message || err)); }
+}
+async function restartServer() {
+  if (!confirm('Restart server now? This will stop the process and should be restarted by your process manager.')) return;
+  try { await api('/api/restart', { method:'POST', body: JSON.stringify({}) }); } catch (err) { console.error(err); alert('Restart request failed'); }
+}
 </script>
 </body>
 </html>`;
