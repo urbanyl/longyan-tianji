@@ -90,6 +90,7 @@ class LocalDashboard {
     } catch (error) {
       return this.json(res, 500, { error: redactSecrets(error.message) });
     }
+  }
 
   auditAppend(entry) {
     try {
@@ -176,7 +177,6 @@ class LocalDashboard {
     } catch (error) {
       return this.json(res, 500, { error: 'Test failed' });
     }
-  }
   }
 
   authorized(req, url) {
