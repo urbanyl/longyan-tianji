@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "description": "Longyan command engine for the Tianji Discord bot by Urbanyl 1920.",
   "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "check": "node scripts/check.js"
   },
   "keywords": [
     "discord",
@@ -26,7 +30,6 @@
     "playwright": "^1.40.0",
     "sharp": "^0.33.0",
     "sqlite3": "^5.1.6",
-    "uuid": "^9.0.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

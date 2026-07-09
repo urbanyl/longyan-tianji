@@ -8,46 +8,36 @@
 [![License](https://img.shields.io/badge/license-MIT-f7c948?style=for-the-badge)](LICENSE)
 [![Made by Urbanyl](https://img.shields.io/badge/made%20by-Urbanyl%201920-0c111d?style=for-the-badge)](https://github.com/urbanyl)
 
-Longyan is a sharp Discord command engine built around Tianji, a fast operator bot with browser control, sandboxed code execution, file generation, public web research, and long-term memory.
+Longyan is the command engine. Tianji is the Discord operator inside it.
 
-The identity is Chinese in pinyin, with no Hanzi in the public naming:
+It opens pages, reads them, clicks through flows, runs short Python or JavaScript jobs inside Docker, writes files, keeps memory, and turns rough Discord messages into clean execution plans.
 
 Project name: Long Yan  
 Bot name: Tian Ji  
-Creator signature: Urbanyl 1920
+Signature: Urbanyl 1920
 
-## What It Does
+## Core
 
-Tianji turns a Discord channel into a command deck.
-
-- Open pages, click selectors, scrape text, and capture screenshots
-- Run Python or JavaScript inside Docker containers
-- Generate PDFs, Excel workbooks, and images
-- Keep task history and key-value memory in SQLite
-- Queue multiple jobs without losing the thread
-- Return generated files directly inside Discord
-
-## Stack
-
-| Layer | Choice |
+| Layer | Runtime |
 | --- | --- |
-| Discord gateway | Discord.js v14 |
-| Browser control | Playwright Chromium |
-| Code runtime | Docker containers |
+| Discord | Discord.js v14 |
+| Browser | Playwright Chromium |
+| Code | Docker, isolated by default |
 | Files | PDFKit, XLSX, Sharp |
-| Memory | SQLite |
-| Language | Node.js |
+| Memory | SQLite with task history |
+| Planner | Local command router |
 
-## Quick Start
+## Install
 
 ```bash
 npm install
 npx playwright install
 cp .env.example .env
+npm run check
 npm start
 ```
 
-Fill `.env` before launch:
+## Configure
 
 ```env
 DISCORD_TOKEN=your_discord_token
@@ -58,51 +48,99 @@ BOT_NAME=Tianji
 MAX_CONCURRENT_TASKS=10
 MEMORY_DB_PATH=./longyan-memory.db
 DOCKER_SOCKET=/var/run/docker.sock
+DOCKER_NETWORK=none
+AUTO_PULL_IMAGES=true
+PYTHON_IMAGE=python:3.11-slim
+NODE_IMAGE=node:20-slim
+BROWSER_HEADLESS=true
+BROWSER_TIMEOUT_MS=45000
+TASK_TIMEOUT_MS=120000
+REPLY_WAIT_MS=60000
+CODE_TIMEOUT_MS=30000
 SERPAPI_KEY=
 ```
 
+`DOCKER_NETWORK=none` keeps executed code offline. Set it to `bridge` only when you deliberately want network access inside code containers.
+
 ## Commands
 
-Run anything:
-
 ```text
-!exec go to https://github.com and screenshot
-!exec open example.com and scrape selector:h1
-!exec run python code: print(sum(range(100)))
-!exec execute javascript code: console.log(new Date().toISOString())
-!exec generate pdf with content: Longyan daily brief
-!exec create excel with data: [{"name":"Longyan","role":"project"},{"name":"Tianji","role":"operator"}]
-!exec make image with text: Longyan Tianji
-!exec search public web for Discord automation
-```
-
-Check work:
-
-```text
+!help
+!name
+!health
+!queue
+!session
 !status task_id
 !cancel task_id
-!session
 ```
 
-Use memory:
+## Execute
+
+Browser work:
 
 ```text
-!memory project Longyan
+!exec open https://example.com screenshot
+!exec open github.com scrape selector:h1
+!exec open example.com links
+!exec open example.com page text
+!exec open example.com fill:"#search" text:"discord bot" press:Enter
+```
+
+Code:
+
+```text
+!exec run python code: print(sum(range(100)))
+!exec run javascript code: console.log(new Date().toISOString())
+```
+
+Files:
+
+```text
+!exec generate pdf content:"Daily brief"
+!exec create excel data:[{"name":"Longyan","role":"project"},{"name":"Tianji","role":"operator"}]
+!exec make image text:"Longyan Tianji"
+!exec export json data:{"project":"Longyan","bot":"Tianji"}
+```
+
+Research:
+
+```text
+!exec research public web for browser automation
+!exec search wikipedia for command queue design
+```
+
+Chained work:
+
+```text
+!exec open https://example.com screenshot then generate pdf content:"Captured example.com"
+!exec run python code: print("ready") then create excel data:[{"status":"ready"}]
+```
+
+## Memory
+
+```text
+!memory set project Longyan
 !memory get project
+!memory list
+!memory delete project
 ```
 
-Show the name card:
+## Shape
+
+The entry file only boots the runtime. The real work lives in small modules:
 
 ```text
-!name
+src/config.js
+src/command-planner.js
+src/orchestrator.js
+src/discord-handler.js
+src/browser-agent.js
+src/code-runner.js
+src/file-generator.js
+src/research-agent.js
+src/memory.js
+src/utils.js
 ```
-
-## Runtime
-
-Node.js handles Discord, orchestration, memory, files, and API calls. Playwright handles the browser. Docker isolates code execution. SQLite stores history without any external database.
-
-Default limits are practical on purpose: ten concurrent tasks, Docker memory caps, short code timeouts, local storage, and clean file output in `temp`.
-
 
 ## License
 
