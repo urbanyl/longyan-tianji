@@ -37,6 +37,19 @@ class MemoryManager {
       )
     `);
 
+    await this.run(`
+      CREATE TABLE IF NOT EXISTS assistant_profiles (
+        user_id TEXT PRIMARY KEY,
+        bot_name TEXT,
+        user_name TEXT,
+        speaking_style TEXT,
+        personality TEXT,
+        preferences TEXT,
+        notes TEXT,
+        updated_at INTEGER
+      )
+    `);
+
     await this.migrate('tasks', 'user_id TEXT');
     await this.migrate('tasks', 'plan TEXT');
     await this.migrate('tasks', 'progress TEXT');
@@ -161,11 +174,89 @@ class MemoryManager {
     return result.changes > 0;
   }
 
+  async getProfile(userId) {
+    await this.ready;
+    const row = await this.get('SELECT * FROM assistant_profiles WHERE user_id = ?', [userId]);
+    return row ? this.fromProfileRow(row) : this.defaultProfile(userId);
+  }
+
+  async updateProfile(userId, patch = {}) {
+    const current = await this.getProfile(userId);
+    const profile = {
+      ...current,
+      ...Object.fromEntries(
+        ['botName', 'userName', 'speakingStyle', 'personality', 'notes']
+          .filter((key) => Object.prototype.hasOwnProperty.call(patch, key))
+          .map((key) => [key, patch[key] == null ? '' : String(patch[key])])
+      ),
+      preferences: patch.preferences && typeof patch.preferences === 'object'
+        ? patch.preferences
+        : current.preferences || {},
+      updatedAt: Date.now()
+    };
+
+    await this.saveProfile(profile);
+    return profile;
+  }
+
+  async rememberPreference(userId, key, value) {
+    const profile = await this.getProfile(userId);
+    const preferences = {
+      ...(profile.preferences || {}),
+      [key]: value
+    };
+    return await this.updateProfile(userId, { preferences });
+  }
+
+  async forgetPreference(userId, key) {
+    const profile = await this.getProfile(userId);
+    const preferences = { ...(profile.preferences || {}) };
+    delete preferences[key];
+    return await this.updateProfile(userId, { preferences });
+  }
+
+  async saveProfile(profile) {
+    await this.ready;
+    await this.run(
+      `INSERT OR REPLACE INTO assistant_profiles (
+        user_id, bot_name, user_name, speaking_style, personality, preferences, notes, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        profile.userId,
+        profile.botName || null,
+        profile.userName || null,
+        profile.speakingStyle || null,
+        profile.personality || null,
+        JSON.stringify(profile.preferences || {}),
+        profile.notes || null,
+        profile.updatedAt || Date.now()
+      ]
+    );
+  }
+
   async stats() {
     await this.ready;
     const tasks = await this.get('SELECT COUNT(*) AS count FROM tasks');
     const memory = await this.get('SELECT COUNT(*) AS count FROM memory');
-    return { tasks: tasks.count, memory: memory.count };
+    const profiles = await this.get('SELECT COUNT(*) AS count FROM assistant_profiles');
+    const memoryBytes = await this.get('SELECT COALESCE(SUM(LENGTH(value)), 0) AS bytes FROM memory');
+    const profileBytes = await this.get(`
+      SELECT COALESCE(SUM(
+        LENGTH(COALESCE(bot_name, '')) +
+        LENGTH(COALESCE(user_name, '')) +
+        LENGTH(COALESCE(speaking_style, '')) +
+        LENGTH(COALESCE(personality, '')) +
+        LENGTH(COALESCE(preferences, '')) +
+        LENGTH(COALESCE(notes, ''))
+      ), 0) AS bytes FROM assistant_profiles
+    `);
+    return {
+      tasks: tasks.count,
+      memory: memory.count,
+      profiles: profiles.count,
+      memoryBytes: memoryBytes.bytes,
+      profileBytes: profileBytes.bytes
+    };
   }
 
   fromTaskRow(row) {
@@ -183,6 +274,32 @@ class MemoryManager {
       duration: row.duration,
       createdAt: row.created_at,
       completedAt: row.completed_at
+    };
+  }
+
+  defaultProfile(userId) {
+    return {
+      userId,
+      botName: '',
+      userName: '',
+      speakingStyle: '',
+      personality: '',
+      preferences: {},
+      notes: '',
+      updatedAt: null
+    };
+  }
+
+  fromProfileRow(row) {
+    return {
+      userId: row.user_id,
+      botName: row.bot_name || '',
+      userName: row.user_name || '',
+      speakingStyle: row.speaking_style || '',
+      personality: row.personality || '',
+      preferences: parseJson(row.preferences, {}),
+      notes: row.notes || '',
+      updatedAt: row.updated_at
     };
   }
 

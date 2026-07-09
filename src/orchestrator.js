@@ -155,11 +155,24 @@ class Orchestrator extends EventEmitter {
     if (step.type === 'code') return await this.codeRunner.run(step.input, { taskId: task.id });
     if (step.type === 'file') return await this.fileStep(step, task);
     if (step.type === 'research') return await this.research.search(step.input.query);
+    const profile = await this.getProfile(task.userId || task.sessionId);
     return {
       project: this.config.brand.project,
-      bot: this.config.brand.bot,
-      received: step.input.text
+      bot: profile.botName,
+      user: profile.userName || task.userId || 'user',
+      speakingStyle: profile.speakingStyle,
+      personality: profile.personality,
+      preferences: profile.preferences,
+      received: step.input.text,
+      reply: this.composePersonalReply(step.input.text, profile)
     };
+  }
+
+  composePersonalReply(text, profile) {
+    const bot = profile.botName || this.config.brand.bot;
+    const user = profile.userName || 'there';
+    const style = profile.speakingStyle || this.config.assistant.defaultSpeakingStyle;
+    return `${bot} heard you, ${user}. I will answer in this style: ${style}. Message received: ${text}`;
   }
 
   async browserStep(step, task) {
@@ -222,6 +235,42 @@ class Orchestrator extends EventEmitter {
 
   async getSession(sessionId) {
     return await this.memory.getTasksBySession(sessionId);
+  }
+
+  async getProfile(userId = 'local-user') {
+    const profile = await this.memory.getProfile(userId);
+    return {
+      ...profile,
+      botName: profile.botName || this.config.assistant.defaultBotName,
+      userName: profile.userName || this.config.assistant.defaultUserName,
+      speakingStyle: profile.speakingStyle || this.config.assistant.defaultSpeakingStyle,
+      personality: profile.personality || this.config.assistant.defaultPersonality
+    };
+  }
+
+  async updateProfile(userId, patch) {
+    const clean = { ...patch };
+    if (clean.notes && clean.notes.length > this.config.assistant.maxProfileNotesChars) {
+      throw new Error(`Profile notes are too long. Limit: ${this.config.assistant.maxProfileNotesChars} characters.`);
+    }
+    return await this.memory.updateProfile(userId, clean);
+  }
+
+  async rememberPreference(userId, key, value) {
+    const cleanKey = String(key || '').trim();
+    const cleanValue = String(value || '').trim();
+    if (!cleanKey) throw new Error('Preference key is required.');
+    if (cleanKey.includes(':')) throw new Error('Preference keys cannot contain colon characters.');
+    if (cleanValue.length > this.config.assistant.maxPreferenceValueChars) {
+      throw new Error(`Preference value is too long. Limit: ${this.config.assistant.maxPreferenceValueChars} characters.`);
+    }
+    return await this.memory.rememberPreference(userId, cleanKey, cleanValue);
+  }
+
+  async forgetPreference(userId, key) {
+    const cleanKey = String(key || '').trim();
+    if (!cleanKey) throw new Error('Preference key is required.');
+    return await this.memory.forgetPreference(userId, cleanKey);
   }
 
   queueState() {

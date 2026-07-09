@@ -25,6 +25,9 @@ class DiscordHandler {
     this.commands.set('status', (message, args) => this.status(message, args));
     this.commands.set('cancel', (message, args) => this.cancel(message, args));
     this.commands.set('memory', (message, args) => this.memory(message, args));
+    this.commands.set('assistant', (message, args) => this.assistant(message, args));
+    this.commands.set('profile', (message, args) => this.assistant(message, args));
+    this.commands.set('remember', (message, args) => this.assistant(message, ['remember', ...args]));
     this.commands.set('session', (message, args) => this.session(message, args));
     this.commands.set('queue', (message) => this.queue(message));
     this.commands.set('health', (message) => this.health(message));
@@ -128,6 +131,68 @@ class DiscordHandler {
     return message.reply(`Stored ${key}.`);
   }
 
+  async assistant(message, args) {
+    const action = (args[0] || 'show').toLowerCase();
+    const userId = message.author.id;
+
+    if (['show', 'profile', 'me'].includes(action)) {
+      const profile = await this.orchestrator.getProfile(userId);
+      return message.reply(`\`\`\`json\n${clip(redactSecrets(profile), 1800)}\n\`\`\``);
+    }
+
+    if (['bot', 'bot-name', 'rename'].includes(action)) {
+      const botName = args.slice(1).join(' ').trim();
+      if (!botName) return message.reply('Send the new assistant name.');
+      const profile = await this.orchestrator.updateProfile(userId, { botName });
+      return message.reply(`Assistant name set to ${profile.botName}.`);
+    }
+
+    if (['call-me', 'user-name', 'username'].includes(action)) {
+      const userName = args.slice(1).join(' ').trim();
+      if (!userName) return message.reply('Send the name I should use for you.');
+      const profile = await this.orchestrator.updateProfile(userId, { userName });
+      return message.reply(`I will call you ${profile.userName}.`);
+    }
+
+    if (['style', 'speaking-style', 'tone'].includes(action)) {
+      const speakingStyle = args.slice(1).join(' ').trim();
+      if (!speakingStyle) return message.reply('Send the speaking style you want.');
+      const profile = await this.orchestrator.updateProfile(userId, { speakingStyle });
+      return message.reply(`Speaking style updated: ${profile.speakingStyle}`);
+    }
+
+    if (['personality', 'persona'].includes(action)) {
+      const personality = args.slice(1).join(' ').trim();
+      if (!personality) return message.reply('Send the personality instructions.');
+      await this.orchestrator.updateProfile(userId, { personality });
+      return message.reply('Personality updated.');
+    }
+
+    if (['notes', 'memory-notes'].includes(action)) {
+      const notes = args.slice(1).join(' ').trim();
+      if (!notes) return message.reply('Send the long-term notes to store.');
+      await this.orchestrator.updateProfile(userId, { notes });
+      return message.reply('Long-term assistant notes updated.');
+    }
+
+    if (action === 'remember') {
+      const key = args[1];
+      const value = args.slice(2).join(' ').trim();
+      if (!key || !value) return message.reply(`Usage: ${this.brand.prefix}assistant remember key value`);
+      await this.orchestrator.rememberPreference(userId, key, value);
+      return message.reply(`Remembered preference ${key}.`);
+    }
+
+    if (action === 'forget') {
+      const key = args[1];
+      if (!key) return message.reply(`Usage: ${this.brand.prefix}assistant forget key`);
+      await this.orchestrator.forgetPreference(userId, key);
+      return message.reply(`Forgot preference ${key}.`);
+    }
+
+    return message.reply(`Usage: ${this.brand.prefix}assistant show | rename name | call-me name | style text | personality text | notes text | remember key value | forget key`);
+  }
+
   async session(message, args) {
     const sessionId = args[0] || message.author.id;
     if (!this.access.canUseSession(message, sessionId)) return message.reply('No tasks found for this session.');
@@ -169,6 +234,10 @@ class DiscordHandler {
       `${p}exec run python code: print(sum(range(100)))`,
       `${p}exec generate pdf content:"Daily brief"`,
       `${p}exec create excel data:[{"name":"Longyan","role":"project"}]`,
+      `${p}assistant rename Tianji`,
+      `${p}assistant call-me Boss`,
+      `${p}assistant style warm, concise, direct`,
+      `${p}assistant remember timezone Europe/Paris`,
       `${p}status task_id`,
       `${p}queue`,
       `${p}memory set key value`,

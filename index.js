@@ -8,12 +8,9 @@ const ResearchAgent = require('./src/research-agent');
 const CommandPlanner = require('./src/command-planner');
 const Orchestrator = require('./src/orchestrator');
 const DiscordHandler = require('./src/discord-handler');
+const LocalDashboard = require('./src/local-dashboard');
 
 async function main() {
-  if (!config.discord.token) {
-    throw new Error('DISCORD_TOKEN is missing.');
-  }
-
   const memory = new MemoryManager(config.execution.memoryPath);
   const browser = new BrowserAgent(config.browser, config.brand);
   const codeRunner = new CodeRunner(config.docker, config.execution);
@@ -31,7 +28,37 @@ async function main() {
     planner
   });
 
-  const client = new Client({
+  let dashboard = null;
+  let client = null;
+
+  if (config.localDashboard.enabled) {
+    dashboard = new LocalDashboard({ config, orchestrator });
+    await dashboard.start();
+  }
+
+  const shutdown = async (signal) => {
+    console.log(`${config.brand.bot} received ${signal}.`);
+    if (dashboard) await dashboard.close().catch(() => {});
+    await orchestrator.shutdown();
+    if (client) await client.destroy();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('unhandledRejection', (error) => {
+    console.error(`${config.brand.bot} unhandled rejection:`, error);
+  });
+
+  if (!config.discord.token) {
+    if (dashboard) {
+      console.warn('DISCORD_TOKEN is missing. Running local dashboard only.');
+      return;
+    }
+    throw new Error('DISCORD_TOKEN is missing.');
+  }
+
+  client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
@@ -48,19 +75,6 @@ async function main() {
 
   client.on('messageCreate', async (message) => {
     await handler.handleMessage(message);
-  });
-
-  const shutdown = async (signal) => {
-    console.log(`${config.brand.bot} received ${signal}.`);
-    await orchestrator.shutdown();
-    await client.destroy();
-    process.exit(0);
-  };
-
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('unhandledRejection', (error) => {
-    console.error(`${config.brand.bot} unhandled rejection:`, error);
   });
 
   await client.login(config.discord.token);

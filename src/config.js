@@ -129,10 +129,31 @@ module.exports = Object.freeze({
   }),
   memory: Object.freeze({
     scope: choice('MEMORY_SCOPE', 'user', ['user', 'channel', 'guild', 'global']),
-    maxValueChars: boundedInteger('MEMORY_MAX_VALUE_CHARS', 8000, 1, 100000),
+    maxValueChars: boundedInteger('MEMORY_MAX_VALUE_CHARS', 200000, 1, 1000000),
     listLimit: boundedInteger('MEMORY_LIST_LIMIT', 20, 1, 100)
   }),
+  assistant: Object.freeze({
+    defaultBotName: text('ASSISTANT_DEFAULT_BOT_NAME', text('BOT_NAME', 'Tianji')),
+    defaultUserName: text('ASSISTANT_DEFAULT_USER_NAME'),
+    defaultSpeakingStyle: text('ASSISTANT_DEFAULT_SPEAKING_STYLE', 'warm, concise, professional'),
+    defaultPersonality: text('ASSISTANT_DEFAULT_PERSONALITY', 'Personal automation assistant with a calm enterprise tone.'),
+    maxProfileNotesChars: boundedInteger('ASSISTANT_MAX_PROFILE_NOTES_CHARS', 200000, 0, 1000000),
+    maxPreferenceValueChars: boundedInteger('ASSISTANT_MAX_PREFERENCE_VALUE_CHARS', 50000, 1, 200000)
+  }),
   research: Object.freeze({
-    serpApiKey: text('SERPAPI_KEY')
+    serpApiKey: text('SERPAPI_KEY'),
+    serpApiEnabled: boolean('SERPAPI_ENABLED', false),
+    freeSearchEnabled: boolean('FREE_SEARCH_ENABLED', true),
+    timeoutMs: integer('RESEARCH_TIMEOUT_MS', 12000, 1000),
+    maxResults: boundedInteger('RESEARCH_MAX_RESULTS', 5, 1, 20)
+  }),
+  localDashboard: Object.freeze({
+    enabled: boolean('LOCAL_DASHBOARD_ENABLED', false),
+    host: text('LOCAL_DASHBOARD_HOST', '127.0.0.1'),
+    port: boundedInteger('LOCAL_DASHBOARD_PORT', 3010, 1, 65535),
+    open: boolean('LOCAL_DASHBOARD_OPEN', false),
+    token: text('LOCAL_DASHBOARD_TOKEN'),
+    defaultUserId: text('LOCAL_DASHBOARD_USER_ID', 'local-user'),
+    maxBodyChars: boundedInteger('LOCAL_DASHBOARD_MAX_BODY_CHARS', 1000000, 1024, 10 * 1024 * 1024)
   })
 });

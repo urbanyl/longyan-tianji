@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node index.js",
+    "gui": "node scripts/gui.js",
     "dev": "nodemon index.js",
     "check": "node scripts/check.js",
     "audit": "npm audit",
