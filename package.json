@@ -1,7 +1,7 @@
 {
   "name": "longyan-tianji",
   "version": "1.0.0",
-  "description": "Longyan command engine for the Tianji Discord bot by Urbanyl alias 1920.",
+  "description": "Longyan command engine for the Tianji Discord bot by Urbanyl 1920.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -15,7 +15,7 @@
     "urbanyl",
     "1920"
   ],
-  "author": "Yu Cheng, Urbanyl alias 1920",
+  "author": "Urbanyl 1920",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.6.2",

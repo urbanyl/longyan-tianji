@@ -14,7 +14,7 @@ The identity is Chinese in pinyin, with no Hanzi in the public naming:
 
 Project name: Long Yan  
 Bot name: Tian Ji  
-Creator signature: Yu Cheng, known online as Urbanyl alias 1920
+Creator signature: Urbanyl 1920
 
 ## What It Does
 
@@ -55,8 +55,6 @@ DISCORD_CLIENT_ID=your_discord_client_id
 COMMAND_PREFIX=!
 PROJECT_NAME=Longyan
 BOT_NAME=Tianji
-FOUNDER_NAME=Yu Cheng
-FOUNDER_ALIAS=Urbanyl 1920
 MAX_CONCURRENT_TASKS=10
 MEMORY_DB_PATH=./longyan-memory.db
 DOCKER_SOCKET=/var/run/docker.sock
@@ -73,7 +71,7 @@ Run anything:
 !exec run python code: print(sum(range(100)))
 !exec execute javascript code: console.log(new Date().toISOString())
 !exec generate pdf with content: Longyan daily brief
-!exec create excel with data: [{"name":"Yu","role":"founder"},{"name":"Tianji","role":"operator"}]
+!exec create excel with data: [{"name":"Longyan","role":"project"},{"name":"Tianji","role":"operator"}]
 !exec make image with text: Longyan Tianji
 !exec search public web for Discord automation
 ```

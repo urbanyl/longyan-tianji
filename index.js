@@ -15,8 +15,6 @@ require('dotenv').config();
 const brand = Object.freeze({
   project: process.env.PROJECT_NAME || 'Longyan',
   bot: process.env.BOT_NAME || 'Tianji',
-  founder: process.env.FOUNDER_NAME || 'Yu Cheng',
-  alias: process.env.FOUNDER_ALIAS || 'Urbanyl 1920',
   prefix: process.env.COMMAND_PREFIX || '!'
 });
 
@@ -206,7 +204,7 @@ class BrowserAgent {
 
     this.context = await this.browser.newContext({
       viewport: this.options.viewport || { width: 1920, height: 1080 },
-      userAgent: `${brand.project}/${brand.bot} by ${brand.alias}`
+      userAgent: `${brand.project}/${brand.bot}`
     });
 
     this.page = await this.context.newPage();
@@ -550,7 +548,7 @@ class Orchestrator extends EventEmitter {
     if (/image/i.test(original)) {
       const text = original.match(/text:\s*([^\n]+)/i);
       const label = text ? text[1].trim() : `${brand.project} ${brand.bot}`;
-      const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg"><rect width="1200" height="630" fill="#0c111d"/><text x="80" y="285" fill="#f7c948" font-family="Arial" font-size="82" font-weight="700">${label}</text><text x="84" y="360" fill="#d6e4ff" font-family="Arial" font-size="30">Built by ${brand.founder}, ${brand.alias}</text></svg>`;
+      const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg"><rect width="1200" height="630" fill="#0c111d"/><text x="80" y="285" fill="#f7c948" font-family="Arial" font-size="82" font-weight="700">${label}</text><text x="84" y="360" fill="#d6e4ff" font-family="Arial" font-size="30">${brand.project} command engine</text></svg>`;
       const file = await this.fileGenerator.generateImage(svg);
       results.push({ action: 'image', file });
     }
@@ -602,7 +600,6 @@ class Orchestrator extends EventEmitter {
       general: {
         project: brand.project,
         bot: brand.bot,
-        founder: `${brand.founder}, ${brand.alias}`,
         message: `${brand.bot} received: ${command.original}`
       }
     };
@@ -726,7 +723,7 @@ class DiscordHandler {
 
     this.commands.set('name', async (message) => {
       return message.reply(
-        `${brand.project} is pronounced "Long Yan". ${brand.bot} is pronounced "Tian Ji". Built by ${brand.founder}, ${brand.alias}.`
+        `${brand.project} is pronounced "Long Yan". ${brand.bot} is pronounced "Tian Ji".`
       );
     });
   }
