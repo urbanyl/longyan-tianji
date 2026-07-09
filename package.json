@@ -1,6 +1,6 @@
 {
   "name": "longyan-tianji",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Longyan command engine for the Tianji Discord bot by Urbanyl 1920.",
   "main": "index.js",
   "engines": {

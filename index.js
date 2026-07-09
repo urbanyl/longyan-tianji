@@ -50,12 +50,15 @@ async function main() {
     console.error(`${config.brand.bot} unhandled rejection:`, error);
   });
 
-  if (!config.discord.token) {
+  const token = config.discord.userTokenMode ? config.discord.userToken : config.discord.token;
+  
+  if (!token) {
+    const tokenName = config.discord.userTokenMode ? 'DISCORD_USER_TOKEN' : 'DISCORD_TOKEN';
     if (dashboard) {
-      console.warn('DISCORD_TOKEN is missing. Running local dashboard only.');
+      console.warn(`${tokenName} is missing. Running local dashboard only.`);
       return;
     }
-    throw new Error('DISCORD_TOKEN is missing.');
+    throw new Error(`${tokenName} is missing.`);
   }
 
   if (config.discord.userTokenMode) {
@@ -91,7 +94,7 @@ async function main() {
     await handler.handleMessage(message);
   });
 
-  await client.login(config.discord.token);
+  await client.login(token);
 }
 
 main().catch((error) => {
